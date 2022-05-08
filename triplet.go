@@ -4,11 +4,10 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"errors"
-	"strings"
+	"fmt"
+	"math"
+	"unicode/utf8"
 )
-
-// tripletSep is the separator.
-const tripletSep = ","
 
 // Triplet holds the parameters the server
 // should store in a single byte array.
@@ -16,6 +15,19 @@ const tripletSep = ","
 // Triplet implements the interfaces of
 // Go's sql package, and can therefore be stored
 // as-is in any compatible database.
+//
+// A triplet is structured as follows:
+// 	+------------------------+
+// 	| usernameLen (1) 			 |
+// 	+------------------------+
+//  | username (usernameLen) |
+// 	+------------------------+
+//  | saltLen (1)						 |
+// 	+------------------------+
+//  | salt (saltLen)				 |
+// 	+------------------------+
+//  | verifier							 |
+// 	+------------------------+
 type Triplet []byte
 
 // Value implements driver.Valuer
@@ -25,48 +37,60 @@ func (t Triplet) Value() (driver.Value, error) {
 
 // Scan implements sql.Scanner.
 func (t *Triplet) Scan(v any) error {
+	if v == nil {
+		return nil
+	}
+
 	b, ok := v.([]byte)
 	if !ok {
-		return errors.New("v could not be converted to a []byte")
+		return errors.New("v could not be cast to []byte")
 	}
 
 	*t = Triplet(b)
 	return nil
 }
 
-// Username returns the Username string in p, or an empty
+// Username returns the username string in p, or an empty
 // string if p is mis-formatted.
 func (p Triplet) Username() string {
-	parts := strings.SplitN(string(p), tripletSep, 2)
-	if len(parts) != 2 {
-		return ""
-	}
-	return parts[0]
-}
-
-// Verifier returns the verifier in p, or an empty
-// string if p is mis-formatted.
-func (p Triplet) Verifier() []byte {
-	parts := bytes.SplitN(p, []byte(tripletSep), 3)
-	if len(parts) != 3 {
-		return nil
-	}
-	return parts[1]
+	usernameLen := int(p[0])
+	return string(p[1 : 1+usernameLen])
 }
 
 // Salt returns the Salt in p, or an empty
 // string if p is mis-formatted.
 func (p Triplet) Salt() []byte {
-	parts := bytes.SplitN(p, []byte(tripletSep), 3)
-	if len(parts) != 3 {
-		return nil
-	}
-	return parts[2]
+	usernameLen := int(p[0])
+	saltLen := int(p[usernameLen+1])
+	return p[usernameLen+2 : usernameLen+2+saltLen]
 }
 
-// NewTriplet returns a new Triplet instance, essentially a concatenation
-// of all three values.
-func NewTriplet(Username string, verifier, salt []byte) Triplet {
-	parts := [][]byte{[]byte(Username), verifier, salt}
-	return bytes.Join(parts, []byte(tripletSep))
+// Verifier returns the verifier in p, or an empty
+// string if p is mis-formatted.
+func (p Triplet) Verifier() []byte {
+	usernameLen := int(p[0])
+	saltLen := int(p[usernameLen+1])
+	return p[usernameLen+saltLen+2:]
+}
+
+// NewTriplet returns a new Triplet instance from the given
+// username, verifier and salt.
+//
+// NewTriplet panics if the length of username or salt exceeds
+// math.MaxUint8.
+func NewTriplet(username string, verifier, salt []byte) Triplet {
+	if utf8.RuneCountInString(username) > math.MaxUint8 {
+		panic(fmt.Errorf("length of username cannot exceed %d", math.MaxUint8))
+	}
+	if len(salt) > math.MaxUint8 {
+		panic(fmt.Errorf("length of salt cannot exceed %d", math.MaxUint8))
+	}
+
+	b := new(bytes.Buffer)
+	b.WriteByte(byte(len(username)))
+	b.WriteString(username)
+	b.WriteByte(byte(len(salt)))
+	b.Write(salt)
+	b.Write(verifier)
+	return b.Bytes()
 }
