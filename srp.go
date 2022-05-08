@@ -31,6 +31,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 )
 
@@ -46,14 +47,10 @@ const minEphemeralKeySize = 32
 // for a salt created with NewRandomSalt.
 const SaltLength = 12
 
-// NewRandomSalt returns a new random salt with the given length.
-//
-// If length < 1, SaltLength is used instead.
-func NewRandomSalt(length int) []byte {
-	if length < 1 {
-		length = SaltLength
-	}
-	return randomKey(length)
+// NewRandomSalt returns a new random salt
+// using rand.Reader.
+func NewRandomSalt() []byte {
+	return randomKey(SaltLength)
 }
 
 // computeM1 computes the value of the client proof M1.
@@ -241,11 +238,7 @@ func makeClientKeyPair(group *Group) (a *big.Int, A *big.Int) {
 		size = minEphemeralKeySize
 	}
 
-	randKey := make([]byte, size)
-	if _, err := rand.Read(randKey); err != nil {
-		panic(fmt.Errorf("failed to get random bytes: %v", err))
-	}
-
+	randKey := randomKey(size)
 	a = new(big.Int).SetBytes(randKey)
 	A = new(big.Int).Exp(group.Generator, a, group.N)
 	return
@@ -270,7 +263,7 @@ func isValidEphemeralKey(group *Group, i *big.Int) bool {
 // with the given length.
 func randomKey(length int) []byte {
 	b := make([]byte, length)
-	if _, err := rand.Read(b); err != nil {
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
 		panic(fmt.Errorf("failed to get random bytes: %v", err))
 	}
 	return b
