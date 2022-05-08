@@ -131,7 +131,7 @@ func (g *Group) String() string {
 // hashing and key-derivation functions.
 var (
 	RFC5054Group2048 = &Group{
-		Name:         "RFC 5054 - A2048",
+		Name:         "2048",
 		Generator:    big.NewInt(2),
 		N:            mustParseHex(hex2048),
 		ExponentSize: 27,
@@ -140,7 +140,7 @@ var (
 	}
 
 	RFC5054Group3072 = &Group{
-		Name:         "RFC 5054 - A3072",
+		Name:         "3072",
 		Generator:    big.NewInt(5),
 		N:            mustParseHex(hex3072),
 		ExponentSize: 32,
@@ -149,7 +149,7 @@ var (
 	}
 
 	RFC5054Group4096 = &Group{
-		Name:         "RFC 5054 - A4096",
+		Name:         "4096",
 		Generator:    big.NewInt(5),
 		N:            mustParseHex(hex4096),
 		ExponentSize: 38,
@@ -158,7 +158,7 @@ var (
 	}
 
 	RFC5054Group6144 = &Group{
-		Name:         "RFC 5054 - A6144",
+		Name:         "6144",
 		Generator:    big.NewInt(5),
 		N:            mustParseHex(hex6144),
 		ExponentSize: 43,
@@ -167,7 +167,7 @@ var (
 	}
 
 	RFC5054Group8192 = &Group{
-		Name:         "RFC 5054 - A8192",
+		Name:         "8192",
 		Generator:    big.NewInt(19),
 		N:            mustParseHex(hex8192),
 		ExponentSize: 48,

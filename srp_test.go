@@ -20,7 +20,7 @@ var hex1024 string
 // should not be used in production. It's implemented for
 // testing purposes only.
 var group = &Group{
-	Name:         "RFC 5054 - A1024",
+	Name:         "1024",
 	Generator:    big.NewInt(2),
 	N:            mustParseHex(hex1024),
 	ExponentSize: 32,
