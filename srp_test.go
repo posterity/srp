@@ -483,6 +483,7 @@ func SendEncrypted(key, data []byte) {}
 // Query is a nop used for examples.
 func Query(any) Triplet { return nil }
 
+// Example of a client session.
 func ExampleClient() {
 	var (
 		group    = RFC5054Group2048
@@ -549,6 +550,7 @@ func ExampleClient() {
 	SendEncrypted(K, []byte("hello, world!"))
 }
 
+// Example of a server session.
 func ExampleServer() {
 	var group = RFC5054Group2048
 
@@ -619,4 +621,26 @@ func ExampleServer() {
 	// K can optionally be used to encrypt/decrypt all exchanges between
 	// them moving forward.
 	SendEncrypted(K, []byte("hello, world!"))
+}
+
+// The verifier is calculated on the client, and sent to the
+// server for storage along with the username and salt used to
+// compute it as a triplet.
+func ExampleComputeVerifier() {
+	const (
+		username = "bob@example.com"
+		password = "p@$$w0rd"
+	)
+	tp, err := ComputeVerifier(RFC5054Group2048, username, password, NewRandomSalt())
+	if err != nil {
+		log.Fatalf("failed to compute verifier: %v", err)
+	}
+
+	// The verifier can be accessed via the returned triplet tp
+	// as tp.Verifier().
+
+	// On the server, it's recommended to store the verifier along with
+	// the username and the salt used to compute it, so sending the whole
+	// triplet ([]byte) is more appropriate.
+	Send(tp)
 }

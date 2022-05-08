@@ -57,12 +57,18 @@ var (
   username = "alice@example.com"
   password = "p@$$w0rd"
 )
-t, err := srp.ComputeVerifier(group, "alice@example.com", "p@$$w0rd")
+tp, err := srp.ComputeVerifier(group, username, password, srp.NewRandomSalt())
 if err != nil {
   log.Fatalf("error computing verifier: %v", err)
 }
 
-// t.Salt() and t.Verifier() must be sent to the server.
+// The verifier can be accessed via the returned triplet tp
+// as tp.Verifier().
+
+// On the server, it's recommended to store the verifier along with
+// the username and the salt used to compute it, so sending the whole
+// triplet tp ([]byte) is more appropriate.
+Send(tp)
 ```
 
 The `group` parameter refers to a set of values known to both the client and
