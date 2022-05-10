@@ -93,12 +93,13 @@ func (s *Server) CheckM1(M1 []byte) (bool, error) {
 		return false, errors.New("client's public ephemeral key (A) must be set first")
 	}
 
-	if !checkProof(s.m1.Bytes(), M1) {
+	if checkProof(s.m1.Bytes(), M1) {
+		s.verifiedM1 = true
+	} else {
+		s.verifiedM1 = false
 		s.err = errors.New("failed to verify client proof M1")
-		return false, s.err
 	}
 
-	s.verifiedM1 = true
 	return s.verifiedM1, nil
 }
 
