@@ -80,10 +80,10 @@ func (p Triplet) Verifier() []byte {
 // math.MaxUint8.
 func NewTriplet(username string, verifier, salt []byte) Triplet {
 	if utf8.RuneCountInString(username) > math.MaxUint8 {
-		panic(fmt.Errorf("length of username cannot exceed %d", math.MaxUint8))
+		panic(fmt.Errorf("username length cannot exceed %d bytes", math.MaxUint8))
 	}
-	if len(salt) > math.MaxUint8 {
-		panic(fmt.Errorf("length of salt cannot exceed %d", math.MaxUint8))
+	if len(salt) > math.MaxInt8 {
+		panic(fmt.Errorf("salt length cannot exceed %d", math.MaxUint8))
 	}
 
 	b := new(bytes.Buffer)
