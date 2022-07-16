@@ -1,29 +1,25 @@
 // Package srp is an implementation of the Secure Remote Password
-// protocol as defined in RFC 5054 and RFC 2945.
+// protocol as defined in [RFC5054] and [RFC2945].
 //
-// It's based on the work of 1Password (https://github.com/1Password/srp),
-// with a few key changes to restore compatibility with the RFC, and to make
-// the codebase more idiomatic.
+// It's based on the work of [1Password], with a few key changes to
+// restore compatibility with the original RFCs, and to make the codebase
+// more idiomatic.
 //
 // Custom Groups
 //
-// All but two of the groups defined in the RFCs are available, but you can also
-// define your own in order to use a different key-derivation function for example.
+// The Diffie-Hellman groups defined in [RFC5054] are available, but they're
+// not recommended for production use because they use outdated hash and
+// key derivation functions.
 //
-// For that, create a new Group instance and register it before
-// you initialize a Client or a Server instance.
+// The [Group.Clone] function allows you to quickly create a copy of an existing
+// group and configure it with the [KDF] and hash function of your choice.
 //
-// 	g := &Group{
-// 		Name:         "Custom Group",
-// 		Generator:    big.NewInt(2),
-// 		N:            big.NewInt(...),
-// 		ExponentSize: 27,
-// 		Hash:         crypto.SHA256,
-// 		Derive:       PBKDF2,
-// 	}
-// 	if err := srp.Register(g); err != nil {
-//		log.Fatalf("error registering group: %v", err)
-// 	}
+// Remember to register the group in the [Groups] map:
+// 	srp.Groups[g.Name()] = g.
+//
+// [RFC5054]: https://datatracker.ietf.org/doc/html/rfc5054
+// [RFC2945]: https://datatracker.ietf.org/doc/html/rfc2945
+// [1Password]: https://github.com/1Password/srp
 package srp
 
 import (
@@ -56,7 +52,7 @@ func NewRandomSalt() []byte {
 // computeM1 computes the value of the client proof M1.
 //
 // Formula:
-// 	H(H(N) XOR H(g) | H(U) | s | A | B | K)
+// 	M1 = H(H(N) XOR H(g) | H(U) | s | A | B | K)
 func computeM1(group *Group, username, salt []byte, A, B *big.Int, K []byte) (*big.Int, error) {
 	var (
 		hN = group.hashBytes(group.N.Bytes())
@@ -96,7 +92,7 @@ func computeM1(group *Group, username, salt []byte, A, B *big.Int, K []byte) (*b
 // computeM2 computes the value of the server proof M2.
 //
 // Formula:
-// 	H(A | M | K)
+// 	M2 = H(A | M | K)
 func computeM2(group *Group, A, M1 *big.Int, K []byte) (*big.Int, error) {
 	h := group.Hash.New()
 	if _, err := h.Write(A.Bytes()); err != nil {
@@ -124,7 +120,7 @@ func checkProof(Mx, proof []byte) bool {
 // derived by a server from this session.
 //
 // Formula:
-// 	(A * v^u) ^ b % N
+// 	S = (A * v^u) ^ b % N
 func computeServerS(group *Group, v, u, A, b *big.Int) (*big.Int, error) {
 	base := new(big.Int)
 	base.Exp(v, u, group.N)
@@ -138,7 +134,7 @@ func computeServerS(group *Group, v, u, A, b *big.Int) (*big.Int, error) {
 // derived by a client from a session.
 //
 // Formula:
-// 	(B - (k * g ^ x)) ^ (a + (u * x)) % N
+// 	S = (B - (k * g ^ x)) ^ (a + (u * x)) % N
 func computeClientS(group *Group, k, x, u, B, a *big.Int) (*big.Int, error) {
 	// (k * g ^ x)
 	product := new(big.Int).Mul(k, new(big.Int).Exp(group.Generator, x, group.N))
@@ -157,7 +153,7 @@ func computeClientS(group *Group, k, x, u, B, a *big.Int) (*big.Int, error) {
 // computeLittleK computes the value of k.
 //
 // Formula:
-// 	H(N | PAD(g))
+// 	k = H(N | PAD(g))
 func computeLittleK(group *Group) (*big.Int, error) {
 	g, err := pad(group.Generator.Bytes(), group.N.BitLen())
 	if err != nil {
@@ -177,6 +173,9 @@ func computeLittleK(group *Group) (*big.Int, error) {
 }
 
 // computeLittleU computes the value of u.
+//
+// Formula:
+// 	u = SHA1(PAD(A) | PAD(B))
 func computeLittleU(group *Group, A, B *big.Int) (*big.Int, error) {
 	if A == nil {
 		return nil, errors.New("client public ephemeral A must be set first")
@@ -205,9 +204,13 @@ func computeLittleU(group *Group, A, B *big.Int) (*big.Int, error) {
 	return u, nil
 }
 
-// makeServerKeyPair creates a server's ephemeral key pair
+// newServerKeyPair creates a server's ephemeral key pair
 // (b, B).
-func makeServerKeyPair(group *Group, k, v *big.Int) (b *big.Int, B *big.Int) {
+//
+// Formula:
+// 	b = random()
+// 	B = k*v + g^b % N
+func newServerKeyPair(group *Group, k, v *big.Int) (b *big.Int, B *big.Int) {
 	size := group.ExponentSize
 	if group.ExponentSize < minEphemeralKeySize {
 		size = minEphemeralKeySize
@@ -230,9 +233,13 @@ func makeServerKeyPair(group *Group, k, v *big.Int) (b *big.Int, B *big.Int) {
 	return
 }
 
-// makeClientKeyPair creates a client's ephemeral key pair
+// newClientKeyPair creates a client's ephemeral key pair
 // (a, A).
-func makeClientKeyPair(group *Group) (a *big.Int, A *big.Int) {
+//
+// Formula:
+// 	a = random()
+// 	A = g^a % N
+func newClientKeyPair(group *Group) (a *big.Int, A *big.Int) {
 	size := group.ExponentSize
 	if group.ExponentSize < minEphemeralKeySize {
 		size = minEphemeralKeySize
@@ -287,7 +294,7 @@ func pad(b []byte, bits int) ([]byte, error) {
 }
 
 // xorBytes returns an array containing
-// the result of of a[i] XOR b[i].
+// the result of a[i] XOR b[i].
 func xorBytes(a, b []byte) ([]byte, error) {
 	if len(a) != len(b) {
 		return nil, errors.New("slices must be of equal length")

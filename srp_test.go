@@ -2,33 +2,16 @@ package srp
 
 import (
 	"bytes"
-	"crypto"
 	_ "crypto/sha1"
 	_ "embed"
 	"encoding/hex"
 	"errors"
 	"log"
 	"math/big"
+	"os"
 	"strings"
 	"testing"
 )
-
-//go:embed groups/1024.txt
-var hex1024 string
-
-// Deprecated: This group is part of the RFC, but
-// should not be used in production. It's implemented for
-// testing purposes only.
-var group = &Group{
-	Name:         "1024",
-	Generator:    big.NewInt(2),
-	N:            mustParseHex(hex1024),
-	ExponentSize: 32,
-	Hash:         crypto.SHA1,
-	Derive: func(username, password string, salt []byte) ([]byte, error) {
-		return RFC5054KDF(crypto.SHA1.New(), username, password, salt)
-	},
-}
 
 // Test vectors imported from RFC 5054 – Appendix B
 // https://datatracker.ietf.org/doc/html/rfc5054#appendix-B
@@ -75,7 +58,8 @@ var (
 		"3499B200 210DCC1F 10EB3394 3CD67FC8 8A2F39A4 BE5BEC4E C0A3212D",
 		"C346D7E4 74B29EDE 8A469FFE CA686E5A",
 	)
-	K = group.Hash.New().Sum(S.Bytes())[:group.Hash.New().Size()]
+	K     = group.Hash.New().Sum(S.Bytes())[:group.Hash.New().Size()]
+	group = RFC5054Group1024
 )
 
 // MustParseHex returns a *big.Int instance
@@ -117,7 +101,7 @@ func assertNotNil(t *testing.T, name string, got []byte) {
 }
 
 func TestServerKeyPair(t *testing.T) {
-	b, B := makeServerKeyPair(group, k, v)
+	b, B := newServerKeyPair(group, k, v)
 	if b == bigZero {
 		t.Fatal("b should not be bigZero")
 	}
@@ -128,7 +112,7 @@ func TestServerKeyPair(t *testing.T) {
 }
 
 func TestClientKeyPair(t *testing.T) {
-	a, A := makeClientKeyPair(group)
+	a, A := newClientKeyPair(group)
 	if a == bigZero {
 		t.Fatal("a should not be bigZero")
 	}
@@ -177,7 +161,7 @@ func TestComputeS(t *testing.T) {
 }
 
 func TestComputeLittleX(t *testing.T) {
-	got, err := group.Derive(string(I), string(P), salt.Bytes())
+	got, err := group.KDF(string(I), string(P), salt.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,32 +362,18 @@ func TestUnregisteredGroup(t *testing.T) {
 	}
 
 	_, err := NewServer(g, string(I), salt.Bytes(), v.Bytes())
-	if err != errUnregisteredGroup {
-		t.Fatal("expected errUnregisteredGroup error")
+	if err != ErrUnknownGroup {
+		t.Fatal("expected ErrUnknownGroup error")
 	}
 
 	_, err = NewClient(g, string(I), string(P), salt.Bytes())
-	if err != errUnregisteredGroup {
-		t.Fatal("expected errUnregisteredGroup error")
+	if err != ErrUnknownGroup {
+		t.Fatal("expected ErrUnknownGroup error")
 	}
 
 	_, err = ComputeVerifier(g, string(I), string(P), salt.Bytes())
-	if err != errUnregisteredGroup {
-		t.Fatal("expected errUnregisteredGroup error")
-	}
-}
-
-func TestRegisterGroup(t *testing.T) {
-	g := &Group{
-		Name: "Custom Group",
-	}
-
-	if err := Register(g); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := Register(g); err == nil {
-		t.Fatal(err)
+	if err != ErrUnknownGroup {
+		t.Fatal("expected ErrUnregisteredGroup error")
 	}
 }
 
@@ -463,10 +433,9 @@ func TestRestoreServerGob(t *testing.T) {
 	assertEqualBytes(t, "K", server.xK, newServer.xK)
 }
 
-func init() {
-	if err := Register(group); err != nil {
-		log.Fatal(err)
-	}
+func TestMain(m *testing.M) {
+	Groups[group.Name] = group
+	os.Exit(m.Run())
 }
 
 // Send is a noop used for examples.
@@ -615,7 +584,7 @@ func ExampleServer() {
 	// independently from the process,
 	K, err := server.SessionKey()
 	if err != nil {
-		log.Fatalf("failed to access shared session key: %v", err)
+		log.Fatalf("failed to access session key: %v", err)
 	}
 
 	// K can optionally be used to encrypt/decrypt all exchanges between

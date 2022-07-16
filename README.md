@@ -8,13 +8,13 @@ protocol as defined by [RFC 2945](https://tools.ietf.org/html/rfc2945) and
 [RFC 5054](https://tools.ietf.org/html/rfc5054).
 
 > SRP is an authentication method that allows the use
-  of user names and passwords over unencrypted channels without
-  revealing the password to an eavesdropper.  SRP also supplies a
-  shared secret at the end of the authentication sequence that can be
-  used to generate encryption keys.
+> of user names and passwords over unencrypted channels without
+> revealing the password to an eavesdropper. SRP also supplies a
+> shared secret at the end of the authentication sequence that can be
+> used to generate encryption keys.
 
 It's based on the work of [1Password](https://github.com/1Password/srp),
-with a few key changes to restore compatibility with the RFC, and to make
+with a key changes to restore compatibility with the RFC, and to make
 the codebase more idiomatic.
 
 SRP is used by leading privacy-conscious companies such as
@@ -24,32 +24,33 @@ and yours truly.
 
 ## Protocol
 
-Conceptually, SRP is not different from how a typical app manages
-authentication; the client signs up by storing a password on the server, and to
+Conceptually, SRP is not different from how most of us think about
+authentication; the client signs up by storing a secret on the server, and to
 login, it must prove to the server that it knows it.
 
 With SRP, the client signs up by storing a cryptographic value (`verifier`)
 derived from its password on the server. To login, they both exchange a
-series of values to prove to each other who they are.
+series of values they compute they both share but never exchange to prove to
+each other who they are.
 
-Trust can be established because the conclusion of the process is that for the
-server, only the client who made the `verifier` could have sent those values,
-and for the client, only a server who has a copy of the `verifier` could have
-done the same.
+Trust can be established at the end of the process because for the
+server, only the client who knows the `verifier` could have sent those values,
+and for the client, and vice versa.
 
 SRP comes with four major benefits:
 
 1. The familiar user-experience of using a username and a password remains
-fundamentally the same;
+   fundamentally the same;
 1. Server cannot leak a password it never saw;
-1. Both client and server can verify each other's identities;
-1. Exchanges can be secured with an extra layer of encryption on top of TLS.
+1. Both client and server can formally verify each other's identities without
+   needing a third-party (e.g CA);
+1. Sessions can be secured with an extra layer of encryption on top of TLS.
 
 ### Registration
 
-During registration, the client must send the server a value referred to as a
-`verifier`. It's a cryptographic value derived from the user's password, and
-a unique salt associated with her.
+During registration, the client must send the server a `verifier`, a
+cryptographic value derived from the user's password, and a unique random salt
+associated with her.
 
 ```go
 var (
@@ -86,14 +87,15 @@ It's important for the server to treat the triplet with care, as it contains
 a secret value (`verifier`) which should never be shared with anyone.
 
 The `salt` value it contains however should be made available publicly to
-*anyone who asks* via a public URL.
+_anyone who asks_ via a public URL.
 
 ### Login
 
-When it's time to authenticate a user, SRP dictates a simple process:
+When it's time to authenticate a user, client and server follow a three-step
+process:
 
-1. `client` and `server` exchanges ephemeral public keys `A` and `B`,
-respectively;
+1. `client` and `server` exchange ephemeral public keys `A` and `B`,
+   respectively;
 2. `client` computes a proof and sends it to the server;
 3. `server` checks the client's proof and sends the client a proof of their own.
 
@@ -115,7 +117,7 @@ if err != nil {
 ```
 
 All the values must match those used to create the verifier that was stored
-by the server. The `salt` should be retrievable from the server without
+on the server. The `salt` should be retrievable from the server without
 requiring prior authentication.
 
 The next step is to send the ephemeral public key `A` to the server:
@@ -161,7 +163,7 @@ if !ok {
 ```
 
 At this stage, the client and the server can trust each other, and can
-(optionally) use a shared encryption key to secure their exchanges from this
+(optionally) use a shared encryption key to secure their session from this
 point on.
 
 ```go
@@ -176,9 +178,9 @@ if err != nil {
 
 #### Server-side
 
-The process on the server-side is very similar to the above, with the key
-difference that the server must first receive a proof from the client (`M1`)
-before it can compute its own (`M2`) and send it over.
+The process on the server-side is very similar to the above, with one key
+difference: the server must first receive and verify a proof the client (`M1`)
+before it computes and sends its own (`M2`).
 
 ```go
 var (
@@ -202,8 +204,8 @@ if err := server.setA(A); err != nil {
 }
 ```
 
-If no error is caught, the next step is to send to server's own ephemeral
-public key `B` to the client.
+If no error is caught, the next step is to send to server's ephemeral public
+key `B` to the client.
 
 ```go
 B := server.B()
@@ -230,7 +232,7 @@ If this verification fails, the process must stop at this point, and no further
 information should be shared with the client over this session. A new `Server`
 instance will need to be created and the negotiation restarted.
 
-If successful, the server can consider the client as *authentic*, but it
+If successful, the server can consider the client as _authentic_, but it
 still needs to send its own proof `M2`.
 
 ```go
@@ -243,7 +245,7 @@ if err != nil {
 ```
 
 If the client accepts the proof, they can both consider each other as
-*authentic* and compute their shared session key to encrypt their exchanges
+_authentic_ and compute their shared session key to encrypt their exchanges
 and protect themselves from eavesdropping.
 
 ```go
@@ -271,8 +273,8 @@ of the user:
                         B   ←--------- 👨🏽 (Server)
 
 (Client) 👧🏼  ---------→ M1
-                        M2  ←--------- 👨🏽 (Server)                           
-                        
+                        M2  ←--------- 👨🏽 (Server)
+
 ```
 
 If you're using a stateless architecture (e.g. REST), `Server` can be
@@ -284,7 +286,7 @@ should therefore be handled appropriately.
 A secure connection between the client and the server is a necessity,
 especially when the client first needs to send their `verifier` to the server.
 
-## Encryption
+## Session Encryption
 
 SRP defines a way for the client and the server to independently compute a
 strong but ephemeral encryption key which they can use to secure their

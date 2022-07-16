@@ -5,10 +5,14 @@ import (
 	"math/big"
 )
 
+// ErrClientNotReady is returned when the client
+// is not ready for the invoked action.
+var ErrClientNotReady = errors.New("server's public ephemeral key (B) must be set first")
+
 // Client represents the client-side perspective of an SRP
 // session.
 type Client struct {
-	username []byte   // (alias for identity)
+	username []byte   // (a.k.a. identity)
 	salt     []byte   // User salt
 	x        *big.Int // User's derived secret
 	a        *big.Int // Client private ephemeral
@@ -16,7 +20,7 @@ type Client struct {
 	xB       *big.Int // Server public ephemeral
 	m1       *big.Int // Client proof
 	m2       *big.Int // Server proof
-	xS       *big.Int // Premaster key (testing-only)
+	xS       *big.Int // Pre-master key
 	xK       []byte   // Session key
 	group    *Group   // D-H group
 }
@@ -76,7 +80,7 @@ func (c *Client) A() []byte {
 // sent to the server.
 func (c *Client) ComputeM1() ([]byte, error) {
 	if c.m1 == nil {
-		return nil, errors.New("server's public ephemeral key (B) must be set first")
+		return nil, ErrClientNotReady
 	}
 	return c.m1.Bytes(), nil
 }
@@ -84,7 +88,7 @@ func (c *Client) ComputeM1() ([]byte, error) {
 // CheckM2 returns true if the server proof M2 is verified.
 func (c *Client) CheckM2(M2 []byte) (bool, error) {
 	if c.m2 == nil {
-		return false, errors.New("server's public ephemeral key must (B) be set first (SetA)")
+		return false, ErrClientNotReady
 	}
 
 	return checkProof(c.m2.Bytes(), M2), nil
@@ -94,7 +98,7 @@ func (c *Client) CheckM2(M2 []byte) (bool, error) {
 // server.
 func (c *Client) SessionKey() ([]byte, error) {
 	if c.xK == nil {
-		return nil, errors.New("server's public ephemeral key (B) must be set first")
+		return nil, ErrClientNotReady
 	}
 
 	h := c.group.Hash.New()
@@ -103,17 +107,17 @@ func (c *Client) SessionKey() ([]byte, error) {
 }
 
 // NewClient a new SRP client instance.
-func NewClient(group *Group, username string, password string, salt []byte) (*Client, error) {
-	if _, ok := registeredGroups[group.Name]; !ok {
-		return nil, errUnregisteredGroup
+func NewClient(group *Group, username, password string, salt []byte) (*Client, error) {
+	if _, ok := Groups[group.Name]; !ok {
+		return nil, ErrUnknownGroup
 	}
 
-	x, err := group.Derive(username, password, salt)
+	x, err := group.KDF(username, password, salt)
 	if err != nil {
 		return nil, err
 	}
 
-	a, A := makeClientKeyPair(group)
+	a, A := newClientKeyPair(group)
 
 	c := &Client{
 		username: []byte(username),
@@ -134,15 +138,15 @@ func NewClient(group *Group, username string, password string, salt []byte) (*Cl
 // over a secure connection (TLS), and stored in a secure
 // persistent-storage (e.g. database).
 func ComputeVerifier(group *Group, username, password string, salt []byte) (Triplet, error) {
-	if _, ok := registeredGroups[group.Name]; !ok {
-		return nil, errUnregisteredGroup
+	if _, ok := Groups[group.Name]; !ok {
+		return nil, ErrUnknownGroup
 	}
 
-	x, err := group.Derive(username, password, salt)
+	x, err := group.KDF(username, password, salt)
 	if err != nil {
 		return nil, err
 	}
 
 	v := new(big.Int).Exp(group.Generator, new(big.Int).SetBytes(x), group.N)
-	return NewTriplet(username, v.Bytes(), salt), nil
+	return NewTriplet(username, salt, v.Bytes()), nil
 }

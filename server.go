@@ -3,13 +3,16 @@ package srp
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math/big"
 )
 
-// session holds information that would
-// allow a server instance to be restored.
-type session struct {
+// ErrServerNoReady is returned when the server
+// is not ready for the invoked action.
+var ErrServerNoReady = errors.New("client's public ephemeral key (A) must be set first")
+
+// serverState holds information that allows
+// a server instance to be restored.
+type serverState struct {
 	Group      string `json:"group"`
 	Triplet    []byte `json:"triplet"`
 	LittleB    []byte `json:"b"`
@@ -27,7 +30,7 @@ type Server struct {
 	xB         *big.Int // Server public ephemeral
 	m1         *big.Int // Client proof
 	m2         *big.Int // Server proof
-	xS         *big.Int // Premaster key (testing-only)
+	xS         *big.Int // Pre-master key
 	xK         []byte   // Session key
 	group      *Group   // D-H group
 	err        error    // Tracks any systemic errors
@@ -90,7 +93,7 @@ func (s *Server) CheckM1(M1 []byte) (bool, error) {
 	}
 
 	if s.m1 == nil {
-		return false, errors.New("client's public ephemeral key (A) must be set first")
+		return false, ErrServerNoReady
 	}
 
 	if checkProof(s.m1.Bytes(), M1) {
@@ -113,7 +116,7 @@ func (s *Server) ComputeM2() ([]byte, error) {
 		return nil, s.err
 	}
 	if s.m2 == nil {
-		return nil, errors.New("client's public ephemeral key (A) must be set first")
+		return nil, ErrServerNoReady
 	}
 	if !s.verifiedM1 {
 		return nil, errors.New("client must show their proof first")
@@ -131,7 +134,7 @@ func (s *Server) SessionKey() ([]byte, error) {
 		return nil, s.err
 	}
 	if s.xK == nil {
-		return nil, errors.New("client's public ephemeral key (A) must be set first")
+		return nil, ErrServerNoReady
 	}
 
 	return s.xK, nil
@@ -144,7 +147,7 @@ func (s *Server) MarshalJSON() ([]byte, error) {
 		return nil, s.err
 	}
 
-	ses := &session{
+	state := &serverState{
 		Group:      s.group.Name,
 		Triplet:    s.triplet,
 		LittleB:    s.b.Bytes(),
@@ -152,17 +155,17 @@ func (s *Server) MarshalJSON() ([]byte, error) {
 		VerifiedM1: s.verifiedM1,
 	}
 	if s.xA != nil {
-		ses.BigA = s.xA.Bytes()
+		state.BigA = s.xA.Bytes()
 	}
 
-	return json.Marshal(ses)
+	return json.Marshal(state)
 }
 
 // UnmarshalJSON restores from an existing state object
 // obtained with MarshalJSON.
 func (s *Server) UnmarshalJSON(data []byte) error {
-	ses := &session{}
-	if err := json.Unmarshal(data, ses); err != nil {
+	state := &serverState{}
+	if err := json.Unmarshal(data, state); err != nil {
 		return err
 	}
 
@@ -178,19 +181,19 @@ func (s *Server) UnmarshalJSON(data []byte) error {
 	s.err = nil
 	s.verifiedM1 = false
 
-	group, ok := registeredGroups[ses.Group]
+	group, ok := Groups[state.Group]
 	if !ok {
-		return fmt.Errorf("unregistered custom group \"%s\"", ses.Group)
+		return ErrUnknownGroup
 	}
 
 	s.group = group
-	s.triplet = ses.Triplet
-	s.b = new(big.Int).SetBytes(ses.LittleB)
-	s.xB = new(big.Int).SetBytes(ses.BigB)
-	s.verifiedM1 = ses.VerifiedM1
+	s.triplet = state.Triplet
+	s.b = new(big.Int).SetBytes(state.LittleB)
+	s.xB = new(big.Int).SetBytes(state.BigB)
+	s.verifiedM1 = state.VerifiedM1
 
-	if ses.BigA != nil {
-		return s.SetA(ses.BigA)
+	if state.BigA != nil {
+		return s.SetA(state.BigA)
 	}
 
 	return nil
@@ -208,8 +211,8 @@ func (s *Server) GobDecode(data []byte) error {
 
 // NewServer returns a new SRP server instance.
 func NewServer(group *Group, username string, salt, verifier []byte) (*Server, error) {
-	if _, ok := registeredGroups[group.Name]; !ok {
-		return nil, errUnregisteredGroup
+	if _, ok := Groups[group.Name]; !ok {
+		return nil, ErrUnknownGroup
 	}
 
 	k, err := computeLittleK(group)
@@ -218,10 +221,10 @@ func NewServer(group *Group, username string, salt, verifier []byte) (*Server, e
 	}
 
 	v := new(big.Int).SetBytes(verifier)
-	b, B := makeServerKeyPair(group, k, v)
+	b, B := newServerKeyPair(group, k, v)
 
 	s := &Server{
-		triplet: NewTriplet(username, verifier, salt),
+		triplet: NewTriplet(username, salt, verifier),
 		b:       b,
 		xB:      B,
 		group:   group,

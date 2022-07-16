@@ -2,25 +2,27 @@ package srp
 
 import (
 	"crypto"
-	"hash"
-	"io"
 
-	_ "crypto/sha256"
-	"crypto/sha512"
-
-	_ "embed"
 	"errors"
+	"io"
 	"math/big"
 	"strings"
 
-	"golang.org/x/crypto/pbkdf2"
+	_ "crypto/sha1" //#nosec
+	_ "embed"       // Embedding RFC5054 groups
 )
 
-// errUnregisteredGroup is the error returned when a custom group
-// is used before it's registered with the Register function.
-var errUnregisteredGroup = errors.New("custom groups must be registered first (Register)")
+// ErrUnknownGroup is the error returned when a referenced
+// group cannot be found in [Groups].
+var ErrUnknownGroup = errors.New("unregistered group")
 
 var (
+	//go:embed groups/1024.txt
+	hex1024 string
+
+	//go:embed groups/1536.txt
+	hex1536 string
+
 	//go:embed groups/2048.txt
 	hex2048 string
 
@@ -40,12 +42,6 @@ var (
 // KDF is the signature of a key derivation function.
 type KDF func(username, password string, salt []byte) ([]byte, error)
 
-// PBKDF2 is a KDF function that uses the PBKDF2 algorithm.
-func PBKDF2(username, password string, salt []byte) ([]byte, error) {
-	k := pbkdf2.Key([]byte(username+password), salt, 100000, 32, sha512.New512_256)
-	return k, nil
-}
-
 // mustParseHex returns a *big.Int instance
 // from the given hex string, or panics.
 func mustParseHex(str string) *big.Int {
@@ -55,22 +51,29 @@ func mustParseHex(str string) *big.Int {
 	str = strings.ReplaceAll(str, "\n", "")
 	n, ok := new(big.Int).SetString(str, 16)
 	if !ok {
-		panic(errors.New("failed to load group N"))
+		panic(errors.New("invalid hex string for group"))
 	}
 
 	return n
 }
 
-// RFC5054KDF is the key derivation function defined in RFC 5054.
+// RFC5054KDF is the [KDF] defined in [RFC5054].
 //
-// Deprecated: This method is only provided for compatibility with some
-// early implementations, and is not recommended for production use.
-// Instead, use a key derivation function (KDF) that involves a hashing
-// scheme designed for password hashing.
+// 	x = SHA(s | SHA(U | ":" | p))
 //
-// See the PBKDF2 method provided in this package.
-func RFC5054KDF(h hash.Hash, username, password string, salt []byte) ([]byte, error) {
-	h.Reset()
+// Deprecated: This method is only provided for compatibility with
+// the standard and for testing purposes. It is not recommended
+// for production use.
+//
+// Instead, use a key derivation function [KDF] designed
+// for password hashing such as [Argon2], [Scrypt] or [PBKDF2].
+//
+// [RFC5054]: https://datatracker.ietf.org/doc/html/rfc5054
+// [Argon2]: https://pkg.go.dev/golang.org/x/crypto/argon2
+// [Scrypt]: https://pkg.go.dev/golang.org/x/crypto/scrypt
+// [PBKDF2]: https://pkg.go.dev/golang.org/x/crypto/pbkdf2
+func RFC5054KDF(username, password string, salt []byte) ([]byte, error) {
+	h := crypto.SHA1.New()
 	if _, err := io.WriteString(h, username); err != nil {
 		return nil, errors.New("failed to write username")
 	}
@@ -94,25 +97,39 @@ func RFC5054KDF(h hash.Hash, username, password string, salt []byte) ([]byte, er
 	return digest, nil
 }
 
-// RFC5054KDFWithSHA256 is a variation of the KDF defined in RFC 5054,
-// using SHA256 instead of the compromised SHA1.
-func RFC5054KDFWithSHA256(username, password string, salt []byte) ([]byte, error) {
-	return RFC5054KDF(crypto.SHA256.New(), username, password, salt)
-}
-
-// Group represents an SRP group.
+// Group represents a Diffie-Hellman group.
 type Group struct {
+	ID           string
 	Name         string
 	Generator    *big.Int
 	N            *big.Int
 	ExponentSize int // RFC 3526 §8
+	Hash         crypto.Hash
+	KDF          KDF
+}
 
-	// Hashing algorithm used.
-	Hash crypto.Hash
-
-	// Key Derivation Function used to compute
-	// the x value.
-	Derive KDF
+// Clone returns an altered copy of g.
+//  import (
+// 		golang.org/x/crypto/argon2
+// 		github.com/posterity/srp
+// 	)
+//
+//  KDFAragon2 := func(username, password string, salt []byte) ([]byte, error) {
+// 		p := []byte(username + ":" + password)
+// 		key := argon2.Key(p, salt, 3, 32*1024, 4, 32)
+// 		return key, nil
+// 	}
+// 	g := srp.RFC5054Group2048.Clone("custom-group", crypto.SHA256, KDFAragon2)
+// 	srp.Groups[group.Name()] = g
+func (g *Group) Clone(name string, h crypto.Hash, kdf KDF) *Group {
+	return &Group{
+		Name:         name,
+		Generator:    g.Generator,
+		N:            g.N,
+		ExponentSize: g.ExponentSize,
+		Hash:         h,
+		KDF:          kdf,
+	}
 }
 
 // hashBytes returns the hash of a.
@@ -127,72 +144,95 @@ func (g *Group) String() string {
 	return g.Name
 }
 
-// RFC5054-defined groups, with updated
-// hashing and key-derivation functions.
+// Diffie-Hellman groups defined in [RFC5054].
+//
+// Deprecated: These groups are provided for compatibility
+// and testing purposes, and should not be used as-is.
+//
+// Use [Group.Clone] to customize one of these groups
+// with your a hash and KDF of your choosing.
+//
+// [RFC5054]: https://datatracker.ietf.org/doc/html/rfc5054
 var (
+	RFC5054Group1024 = &Group{
+		ID:           "1",
+		Name:         "1024",
+		Generator:    big.NewInt(2),
+		N:            mustParseHex(hex1024),
+		ExponentSize: 32,
+		Hash:         crypto.SHA1,
+		KDF:          RFC5054KDF,
+	}
+
+	RFC5054Group1536 = &Group{
+		ID:           "5",
+		Name:         "1536",
+		Generator:    big.NewInt(2),
+		N:            mustParseHex(hex1536),
+		ExponentSize: 23,
+		Hash:         crypto.SHA1,
+		KDF:          RFC5054KDF,
+	}
+
 	RFC5054Group2048 = &Group{
+		ID:           "14",
 		Name:         "2048",
 		Generator:    big.NewInt(2),
 		N:            mustParseHex(hex2048),
 		ExponentSize: 27,
-		Hash:         crypto.SHA256,
-		Derive:       RFC5054KDFWithSHA256,
+		Hash:         crypto.SHA1,
+		KDF:          RFC5054KDF,
 	}
 
 	RFC5054Group3072 = &Group{
+		ID:           "15",
 		Name:         "3072",
 		Generator:    big.NewInt(5),
 		N:            mustParseHex(hex3072),
 		ExponentSize: 32,
-		Hash:         crypto.SHA256,
-		Derive:       RFC5054KDFWithSHA256,
+		Hash:         crypto.SHA1,
+		KDF:          RFC5054KDF,
 	}
 
 	RFC5054Group4096 = &Group{
+		ID:           "16",
 		Name:         "4096",
 		Generator:    big.NewInt(5),
 		N:            mustParseHex(hex4096),
 		ExponentSize: 38,
-		Hash:         crypto.SHA256,
-		Derive:       PBKDF2,
+		Hash:         crypto.SHA1,
+		KDF:          RFC5054KDF,
 	}
 
 	RFC5054Group6144 = &Group{
+		ID:           "17",
 		Name:         "6144",
 		Generator:    big.NewInt(5),
 		N:            mustParseHex(hex6144),
 		ExponentSize: 43,
-		Hash:         crypto.SHA256,
-		Derive:       PBKDF2,
+		Hash:         crypto.SHA1,
+		KDF:          RFC5054KDF,
 	}
 
 	RFC5054Group8192 = &Group{
+		ID:           "18",
 		Name:         "8192",
 		Generator:    big.NewInt(19),
 		N:            mustParseHex(hex8192),
 		ExponentSize: 48,
-		Hash:         crypto.SHA256,
-		Derive:       PBKDF2,
+		Hash:         crypto.SHA1,
+		KDF:          RFC5054KDF,
 	}
 )
 
-// registeredGroups holds a reference to all the
-// known groups.
-var registeredGroups = map[string]*Group{
+// Groups holds index all the know groups
+// by their name.
+var Groups = map[string]*Group{
+	RFC5054Group2048.Name: RFC5054Group1024,
+	RFC5054Group2048.Name: RFC5054Group1536,
 	RFC5054Group2048.Name: RFC5054Group2048,
 	RFC5054Group3072.Name: RFC5054Group3072,
 	RFC5054Group4096.Name: RFC5054Group4096,
 	RFC5054Group6144.Name: RFC5054Group6144,
 	RFC5054Group8192.Name: RFC5054Group8192,
-}
-
-// Registers a custom defined group to be used in either a Client
-// or a Server instance.
-func Register(g *Group) error {
-	_, ok := registeredGroups[g.Name]
-	if ok {
-		return errors.New("group named \"s\" already exists")
-	}
-	registeredGroups[g.Name] = g
-	return nil
 }
