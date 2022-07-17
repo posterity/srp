@@ -13,7 +13,6 @@ var ErrServerNoReady = errors.New("client's public ephemeral key (A) must be set
 // serverState holds information that allows
 // a server instance to be restored.
 type serverState struct {
-	Group      string `json:"group"`
 	Triplet    []byte `json:"triplet"`
 	LittleB    []byte `json:"b"`
 	BigB       []byte `json:"B"`
@@ -32,7 +31,7 @@ type Server struct {
 	m2         *big.Int // Server proof
 	xS         *big.Int // Pre-master key
 	xK         []byte   // Session key
-	group      *Group   // D-H group
+	params     *Params  // DH Group, hash and KDF
 	err        error    // Tracks any systemic errors
 	verifiedM1 bool     // Tracks if the client proof was successfully checked
 }
@@ -41,7 +40,7 @@ type Server struct {
 // (B) of this server.
 func (s *Server) SetA(public []byte) error {
 	A := new(big.Int).SetBytes(public)
-	if !isValidEphemeralKey(s.group, A) {
+	if !isValidEphemeralKey(s.params, A) {
 		return errors.New("invalid public exponent")
 	}
 
@@ -51,24 +50,24 @@ func (s *Server) SetA(public []byte) error {
 		v        = new(big.Int).SetBytes(s.triplet.Verifier())
 	)
 
-	u, err := computeLittleU(s.group, A, s.xB)
+	u, err := computeLittleU(s.params, A, s.xB)
 	if err != nil {
 		return err
 	}
 
-	S, err := computeServerS(s.group, v, u, A, s.b)
+	S, err := computeServerS(s.params, v, u, A, s.b)
 	if err != nil {
 		return err
 	}
 
-	K := s.group.hashBytes(S.Bytes())
+	K := s.params.hashBytes(S.Bytes())
 
-	M1, err := computeM1(s.group, username, salt, A, s.xB, K)
+	M1, err := computeM1(s.params, username, salt, A, s.xB, K)
 	if err != nil {
 		return err
 	}
 
-	M2, err := computeM2(s.group, A, M1, K)
+	M2, err := computeM2(s.params, A, M1, K)
 	if err != nil {
 		return err
 	}
@@ -148,7 +147,6 @@ func (s *Server) MarshalJSON() ([]byte, error) {
 	}
 
 	state := &serverState{
-		Group:      s.group.Name,
 		Triplet:    s.triplet,
 		LittleB:    s.b.Bytes(),
 		BigB:       s.xB.Bytes(),
@@ -177,16 +175,9 @@ func (s *Server) UnmarshalJSON(data []byte) error {
 	s.m2 = nil
 	s.xS = nil
 	s.xK = nil
-	s.group = nil
 	s.err = nil
 	s.verifiedM1 = false
 
-	group, ok := Groups[state.Group]
-	if !ok {
-		return ErrUnknownGroup
-	}
-
-	s.group = group
 	s.triplet = state.Triplet
 	s.b = new(big.Int).SetBytes(state.LittleB)
 	s.xB = new(big.Int).SetBytes(state.BigB)
@@ -199,35 +190,32 @@ func (s *Server) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// GobEncode implements gob.Encoder.
-func (s *Server) GobEncode() ([]byte, error) {
-	return s.MarshalJSON()
-}
-
-// GobDecode implements gob.Decoder.
-func (s *Server) GobDecode(data []byte) error {
-	return s.UnmarshalJSON(data)
+// RestoreServer restores a server from a previously-saved JSON state.
+func RestoreServer(params *Params, state []byte) (*Server, error) {
+	s := &Server{
+		params: params,
+	}
+	if err := json.Unmarshal(state, s); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 // NewServer returns a new SRP server instance.
-func NewServer(group *Group, username string, salt, verifier []byte) (*Server, error) {
-	if _, ok := Groups[group.Name]; !ok {
-		return nil, ErrUnknownGroup
-	}
-
-	k, err := computeLittleK(group)
+func NewServer(params *Params, username string, salt, verifier []byte) (*Server, error) {
+	k, err := computeLittleK(params)
 	if err != nil {
 		return nil, err
 	}
 
 	v := new(big.Int).SetBytes(verifier)
-	b, B := newServerKeyPair(group, k, v)
+	b, B := newServerKeyPair(params, k, v)
 
 	s := &Server{
 		triplet: NewTriplet(username, salt, verifier),
 		b:       b,
 		xB:      B,
-		group:   group,
+		params:  params,
 	}
 	return s, nil
 }

@@ -14,28 +14,29 @@ protocol as defined by [RFC 2945](https://tools.ietf.org/html/rfc2945) and
 > used to generate encryption keys.
 
 It's based on the work of [1Password](https://github.com/1Password/srp),
-with a key changes to restore compatibility with the RFC, and to make
+with a few key changes to restore compatibility with the RFC, and to make
 the codebase more idiomatic.
 
 SRP is used by leading privacy-conscious companies such as
-[Apple](https://support.apple.com/guide/security/escrow-security-for-icloud-keychain-sec3e341e75d/web), [1Password](https://blog.1password.com/developers-how-we-use-srp-and-you-can-too/),
+[Apple](https://support.apple.com/guide/security/escrow-security-for-icloud-keychain-sec3e341e75d/web),
+[1Password](https://blog.1password.com/developers-how-we-use-srp-and-you-can-too/),
 [ProtonMail](https://protonmail.com/blog/cryptographic-architecture-response/),
 and yours truly.
 
 ## Protocol
 
 Conceptually, SRP is not different from how most of us think about
-authentication; the client signs up by storing a secret on the server, and to
-login, it must prove to the server that it knows it.
+authentication; the client signs up by storing a _secret_ on the server, and to
+login, it must prove to that server that it knows it.
 
-With SRP, the client signs up by storing a cryptographic value (`verifier`)
+With SRP, the client first registers by storing a cryptographic value (`verifier`)
 derived from its password on the server. To login, they both exchange a
 series of values they compute they both share but never exchange to prove to
 each other who they are.
 
-Trust can be established at the end of the process because for the
-server, only the client who knows the `verifier` could have sent those values,
-and for the client, and vice versa.
+Trust can be established at the end of the process because for the server,
+only the client who knows the `verifier` could have sent those values,
+and vice versa.
 
 SRP comes with four major benefits:
 
@@ -46,19 +47,60 @@ SRP comes with four major benefits:
    needing a third-party (e.g CA);
 1. Sessions can be secured with an extra layer of encryption on top of TLS.
 
-### Registration
+### Params selection
 
-During registration, the client must send the server a `verifier`, a
-cryptographic value derived from the user's password, and a unique random salt
-associated with her.
+SRP requires the client and the server to agree on a given set of parameters,
+namely a diffie-hellman (DH) group, a hash function, and key-derivation
+function.
+
+All the DH groups defined in [RFC 5054](https://tools.ietf.org/html/rfc5054)
+are available.
+
+You can use any hash function you would like
+(e.g. `SHA256`, [Blake2b](https://pkg.go.dev/golang.org/x/crypto/blake2b)), and
+the same goes for key-derivation
+(e.g. [Argon2](https://pkg.go.dev/golang.org/x/crypto/argon2),
+[Scrypt](https://pkg.go.dev/golang.org/x/crypto/scrypt) or
+[PBKDF2](https://pkg.go.dev/golang.org/x/crypto/pbkdf2)).
+
+The example below shows an example where the Diffie-Hellman group 16 is used
+in conjunction with `SHA256` and
+[Argon2](https://pkg.go.dev/golang.org/x/crypto/argon2) as KDF:
+
+```golang
+import (
+  "runtime"
+  "github.com/posterity/srp"
+  "golang.org/x/crypto/argon2"
+
+  _ "crypto/sha256"
+)
+
+// KDFArgon2 uses Argon2.
+func KDFArgon2(username, password string, salt []byte) ([]byte, error) {
+  p := []byte(username + ":" + password)
+  key := argon2.IDKey(p, salt, 3, 256 * 1048576, runtime.NumCPU(), 32)
+  return key, nil
+}
+
+// Params instance using DH group 16, SHA256 for hashing and Argon2 as a KDF.
+var params = &srp.Params{
+  Name: "DH16–SHA256–Argon2",
+  Group: srp.RFC5054Group4096,
+  Hash: crypto.SHA256,
+  KDF: KDFArgon2,
+}
+```
+
+### User Registration
+
+During user registration, the client must send the server a `verifier`; a
+value cryptographically derived from the user's password, and a unique random
+salt associated with her.
 
 ```go
-var (
-  group = srp.RFC5054Group2048
-  username = "alice@example.com"
-  password = "p@$$w0rd"
-)
-tp, err := srp.ComputeVerifier(group, username, password, srp.NewRandomSalt())
+params := srp.KnownParams["DH16–SHA256–Argon2"]
+tp, err := srp.ComputeVerifier(params, username, password, srp.NewSalt())
 if err != nil {
   log.Fatalf("error computing verifier: %v", err)
 }
@@ -72,11 +114,7 @@ if err != nil {
 Send(tp)
 ```
 
-The `group` parameter refers to a set of values known to both the client and
-the server, and which will be used in all cryptographic computations.
-[RFC 5054](https://tools.ietf.org/html/rfc5054) defines a number of them.
-
-The `Triplet` returned by this function encapsulates three variables into a
+The `Triplet` returned by `ComputeVerifier` encapsulates three variables into a
 single byte array that the server can store in a database:
 
 - Username
@@ -105,12 +143,12 @@ On the client side, the first step is to initialize a `Client`.
 
 ```go
 var (
-  group = srp.RFC5054Group2048
+  params = srp.KnownParams("DH16–SHA256–Argon2")
   username = "alice@example.com"
   password = "p@$$w0rd"
-  salt []byte                     // Retrieved from the server
+  salt []byte // Retrieved from the server
 )
-client, err := srp.NewClient(group, username, password, salt)
+client, err := srp.NewClient(params, username, password, salt)
 if err != nil {
   log.Fatal(err)
 }
@@ -184,8 +222,8 @@ before it computes and sends its own (`M2`).
 
 ```go
 var (
-  group = srp.RFC5054Group2048  // Same as the one used on the client
-  triplet srp.Triplet           // Retrieved from the server
+  params = srp.KnownParams("DH16–SHA256–Argon2")  // Same as the client
+  triplet srp.Triplet                             // Retrieved from the server
 )
 server, err := srp.NewServer(group, username, password, salt)
 if err != nil {
@@ -278,10 +316,9 @@ of the user:
 ```
 
 If you're using a stateless architecture (e.g. REST), `Server` can be
-encoded/decoded to/from JSON or Go's own [gob](https://pkg.go.dev/encoding/gob),
-allowing you to save and restore its internal state as needed. Bear in
-mind that a `Server`'s internal state contains the user's `verifier`, and
-should therefore be handled appropriately.
+encoded/decoded to/from JSON, allowing you to save and restore its internal
+state as needed. Bear in mind that a `Server`'s internal state contains the
+user's `verifier`, and should therefore be handled appropriately.
 
 A secure connection between the client and the server is a necessity,
 especially when the client first needs to send their `verifier` to the server.

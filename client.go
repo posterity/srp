@@ -22,22 +22,22 @@ type Client struct {
 	m2       *big.Int // Server proof
 	xS       *big.Int // Pre-master key
 	xK       []byte   // Session key
-	group    *Group   // D-H group
+	params   *Params  // D-H params
 }
 
 // SetB configures the server's public ephemeral key (B).
 func (c *Client) SetB(public []byte) error {
 	B := new(big.Int).SetBytes(public)
-	if !isValidEphemeralKey(c.group, B) {
+	if !isValidEphemeralKey(c.params, B) {
 		return errors.New("invalid public exponent")
 	}
 
-	k, err := computeLittleK(c.group)
+	k, err := computeLittleK(c.params)
 	if err != nil {
 		return err
 	}
 
-	u, err := computeLittleU(c.group, c.xA, B)
+	u, err := computeLittleU(c.params, c.xA, B)
 	if err != nil {
 		return err
 	}
@@ -45,19 +45,19 @@ func (c *Client) SetB(public []byte) error {
 		return errors.New("invalid u value")
 	}
 
-	S, err := computeClientS(c.group, k, c.x, u, B, c.a)
+	S, err := computeClientS(c.params, k, c.x, u, B, c.a)
 	if err != nil {
 		return err
 	}
 
-	K := c.group.hashBytes(S.Bytes())
+	K := c.params.hashBytes(S.Bytes())
 
-	M1, err := computeM1(c.group, c.username, c.salt, c.xA, B, K)
+	M1, err := computeM1(c.params, c.username, c.salt, c.xA, B, K)
 	if err != nil {
 		return err
 	}
 
-	M2, err := computeM2(c.group, c.xA, M1, K)
+	M2, err := computeM2(c.params, c.xA, M1, K)
 	if err != nil {
 		return err
 	}
@@ -101,23 +101,19 @@ func (c *Client) SessionKey() ([]byte, error) {
 		return nil, ErrClientNotReady
 	}
 
-	h := c.group.Hash.New()
+	h := c.params.Hash.New()
 	digest := h.Sum(c.xK)[:h.Size()]
 	return digest, nil
 }
 
 // NewClient a new SRP client instance.
-func NewClient(group *Group, username, password string, salt []byte) (*Client, error) {
-	if _, ok := Groups[group.Name]; !ok {
-		return nil, ErrUnknownGroup
-	}
-
-	x, err := group.KDF(username, password, salt)
+func NewClient(params *Params, username, password string, salt []byte) (*Client, error) {
+	x, err := params.KDF(username, password, salt)
 	if err != nil {
 		return nil, err
 	}
 
-	a, A := newClientKeyPair(group)
+	a, A := newClientKeyPair(params)
 
 	c := &Client{
 		username: []byte(username),
@@ -125,7 +121,7 @@ func NewClient(group *Group, username, password string, salt []byte) (*Client, e
 		x:        new(big.Int).SetBytes(x),
 		a:        a,
 		xA:       A,
-		group:    group,
+		params:   params,
 	}
 	return c, nil
 }
@@ -137,16 +133,12 @@ func NewClient(group *Group, username, password string, salt []byte) (*Client, e
 // containing the information that should be sent to the server
 // over a secure connection (TLS), and stored in a secure
 // persistent-storage (e.g. database).
-func ComputeVerifier(group *Group, username, password string, salt []byte) (Triplet, error) {
-	if _, ok := Groups[group.Name]; !ok {
-		return nil, ErrUnknownGroup
-	}
-
-	x, err := group.KDF(username, password, salt)
+func ComputeVerifier(params *Params, username, password string, salt []byte) (Triplet, error) {
+	x, err := params.KDF(username, password, salt)
 	if err != nil {
 		return nil, err
 	}
 
-	v := new(big.Int).Exp(group.Generator, new(big.Int).SetBytes(x), group.N)
+	v := new(big.Int).Exp(params.Group.Generator, new(big.Int).SetBytes(x), params.Group.N)
 	return NewTriplet(username, salt, v.Bytes()), nil
 }

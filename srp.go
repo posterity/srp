@@ -5,18 +5,6 @@
 // restore compatibility with the original RFCs, and to make the codebase
 // more idiomatic.
 //
-// Custom Groups
-//
-// The Diffie-Hellman groups defined in [RFC5054] are available, but they're
-// not recommended for production use because they use outdated hash and
-// key derivation functions.
-//
-// The [Group.Clone] function allows you to quickly create a copy of an existing
-// group and configure it with the [KDF] and hash function of your choice.
-//
-// Remember to register the group in the [Groups] map:
-// 	srp.Groups[g.Name()] = g.
-//
 // [RFC5054]: https://datatracker.ietf.org/doc/html/rfc5054
 // [RFC2945]: https://datatracker.ietf.org/doc/html/rfc2945
 // [1Password]: https://github.com/1Password/srp
@@ -40,12 +28,12 @@ var (
 const minEphemeralKeySize = 32
 
 // SaltLength represents the default length
-// for a salt created with NewRandomSalt.
+// for a salt created with NewSalt.
 const SaltLength = 12
 
-// NewRandomSalt returns a new random salt
+// NewSalt returns a new random salt
 // using rand.Reader.
-func NewRandomSalt() []byte {
+func NewSalt() []byte {
 	return randomKey(SaltLength)
 }
 
@@ -53,11 +41,11 @@ func NewRandomSalt() []byte {
 //
 // Formula:
 // 	M1 = H(H(N) XOR H(g) | H(U) | s | A | B | K)
-func computeM1(group *Group, username, salt []byte, A, B *big.Int, K []byte) (*big.Int, error) {
+func computeM1(params *Params, username, salt []byte, A, B *big.Int, K []byte) (*big.Int, error) {
 	var (
-		hN = group.hashBytes(group.N.Bytes())
-		hg = group.hashBytes(group.Generator.Bytes())
-		hU = group.hashBytes(username)
+		hN = params.hashBytes(params.Group.N.Bytes())
+		hg = params.hashBytes(params.Group.Generator.Bytes())
+		hU = params.hashBytes(username)
 	)
 
 	groupXOR, err := xorBytes(hN, hg)
@@ -65,9 +53,9 @@ func computeM1(group *Group, username, salt []byte, A, B *big.Int, K []byte) (*b
 		return nil, err
 	}
 
-	h := group.Hash.New()
+	h := params.Hash.New()
 	if _, err := h.Write(groupXOR); err != nil {
-		return nil, fmt.Errorf("failed to write group hash to hasher: %w", err)
+		return nil, fmt.Errorf("failed to write params hash to hasher: %w", err)
 	}
 	if _, err := h.Write(hU); err != nil {
 		return nil, fmt.Errorf("failed to write u hash to hasher: %w", err)
@@ -93,8 +81,8 @@ func computeM1(group *Group, username, salt []byte, A, B *big.Int, K []byte) (*b
 //
 // Formula:
 // 	M2 = H(A | M | K)
-func computeM2(group *Group, A, M1 *big.Int, K []byte) (*big.Int, error) {
-	h := group.Hash.New()
+func computeM2(params *Params, A, M1 *big.Int, K []byte) (*big.Int, error) {
+	h := params.Hash.New()
 	if _, err := h.Write(A.Bytes()); err != nil {
 		return nil, fmt.Errorf("failed to write A to hasher: %w", err)
 	}
@@ -121,12 +109,12 @@ func checkProof(Mx, proof []byte) bool {
 //
 // Formula:
 // 	S = (A * v^u) ^ b % N
-func computeServerS(group *Group, v, u, A, b *big.Int) (*big.Int, error) {
+func computeServerS(params *Params, v, u, A, b *big.Int) (*big.Int, error) {
 	base := new(big.Int)
-	base.Exp(v, u, group.N)
+	base.Exp(v, u, params.Group.N)
 	base.Mul(base, A)
 
-	S := new(big.Int).Exp(base, b, group.N)
+	S := new(big.Int).Exp(base, b, params.Group.N)
 	return S, nil
 }
 
@@ -135,9 +123,9 @@ func computeServerS(group *Group, v, u, A, b *big.Int) (*big.Int, error) {
 //
 // Formula:
 // 	S = (B - (k * g ^ x)) ^ (a + (u * x)) % N
-func computeClientS(group *Group, k, x, u, B, a *big.Int) (*big.Int, error) {
+func computeClientS(params *Params, k, x, u, B, a *big.Int) (*big.Int, error) {
 	// (k * g ^ x)
-	product := new(big.Int).Mul(k, new(big.Int).Exp(group.Generator, x, group.N))
+	product := new(big.Int).Mul(k, new(big.Int).Exp(params.Group.Generator, x, params.Group.N))
 
 	// (B - (k * g ^ x))
 	base := new(big.Int).Sub(B, product)
@@ -146,7 +134,7 @@ func computeClientS(group *Group, k, x, u, B, a *big.Int) (*big.Int, error) {
 	exp := new(big.Int).Add(a, new(big.Int).Mul(u, x))
 
 	// (B - (k * g ^ x)) ^ (a + (u * x)) % N
-	S := new(big.Int).Exp(base, exp, group.N)
+	S := new(big.Int).Exp(base, exp, params.Group.N)
 	return S, nil
 }
 
@@ -154,14 +142,14 @@ func computeClientS(group *Group, k, x, u, B, a *big.Int) (*big.Int, error) {
 //
 // Formula:
 // 	k = H(N | PAD(g))
-func computeLittleK(group *Group) (*big.Int, error) {
-	g, err := pad(group.Generator.Bytes(), group.N.BitLen())
+func computeLittleK(params *Params) (*big.Int, error) {
+	g, err := pad(params.Group.Generator.Bytes(), params.Group.N.BitLen())
 	if err != nil {
 		return nil, fmt.Errorf("failed to pad g")
 	}
 
-	h := group.Hash.New()
-	if _, err := h.Write(group.N.Bytes()); err != nil {
+	h := params.Hash.New()
+	if _, err := h.Write(params.Group.N.Bytes()); err != nil {
 		return nil, fmt.Errorf("failed to write N to hasher: %w", err)
 	}
 	if _, err = h.Write(g); err != nil {
@@ -176,22 +164,22 @@ func computeLittleK(group *Group) (*big.Int, error) {
 //
 // Formula:
 // 	u = SHA1(PAD(A) | PAD(B))
-func computeLittleU(group *Group, A, B *big.Int) (*big.Int, error) {
+func computeLittleU(params *Params, A, B *big.Int) (*big.Int, error) {
 	if A == nil {
 		return nil, errors.New("client public ephemeral A must be set first")
 	}
 
-	bA, err := pad(A.Bytes(), group.N.BitLen())
+	bA, err := pad(A.Bytes(), params.Group.N.BitLen())
 	if err != nil {
 		return nil, fmt.Errorf("failed to pad A: %w", err)
 	}
 
-	bB, err := pad(B.Bytes(), group.N.BitLen())
+	bB, err := pad(B.Bytes(), params.Group.N.BitLen())
 	if err != nil {
 		return nil, fmt.Errorf("failed to pad B: %w", err)
 	}
 
-	h := group.Hash.New()
+	h := params.Hash.New()
 	if _, err = h.Write(bA); err != nil {
 		return nil, fmt.Errorf("failed to write to hasher: %w", err)
 	}
@@ -210,9 +198,9 @@ func computeLittleU(group *Group, A, B *big.Int) (*big.Int, error) {
 // Formula:
 // 	b = random()
 // 	B = k*v + g^b % N
-func newServerKeyPair(group *Group, k, v *big.Int) (b *big.Int, B *big.Int) {
-	size := group.ExponentSize
-	if group.ExponentSize < minEphemeralKeySize {
+func newServerKeyPair(params *Params, k, v *big.Int) (b *big.Int, B *big.Int) {
+	size := params.Group.ExponentSize
+	if params.Group.ExponentSize < minEphemeralKeySize {
 		size = minEphemeralKeySize
 	}
 
@@ -225,10 +213,10 @@ func newServerKeyPair(group *Group, k, v *big.Int) (b *big.Int, B *big.Int) {
 		term2 = new(big.Int)
 	)
 	term1.Mul(k, v)
-	term1.Mod(term1, group.N)
-	term2.Exp(group.Generator, b, group.N)
+	term1.Mod(term1, params.Group.N)
+	term2.Exp(params.Group.Generator, b, params.Group.N)
 	B.Add(term1, term2)
-	B.Mod(B, group.N)
+	B.Mod(B, params.Group.N)
 
 	return
 }
@@ -239,27 +227,27 @@ func newServerKeyPair(group *Group, k, v *big.Int) (b *big.Int, B *big.Int) {
 // Formula:
 // 	a = random()
 // 	A = g^a % N
-func newClientKeyPair(group *Group) (a *big.Int, A *big.Int) {
-	size := group.ExponentSize
-	if group.ExponentSize < minEphemeralKeySize {
+func newClientKeyPair(params *Params) (a *big.Int, A *big.Int) {
+	size := params.Group.ExponentSize
+	if params.Group.ExponentSize < minEphemeralKeySize {
 		size = minEphemeralKeySize
 	}
 
 	randKey := randomKey(size)
 	a = new(big.Int).SetBytes(randKey)
-	A = new(big.Int).Exp(group.Generator, a, group.N)
+	A = new(big.Int).Exp(params.Group.Generator, a, params.Group.N)
 	return
 }
 
 // isValidEphemeral returns true if i is valid
-// public ephemeral key for the given group.
-func isValidEphemeralKey(group *Group, i *big.Int) bool {
+// public ephemeral key for the given params.
+func isValidEphemeralKey(params *Params, i *big.Int) bool {
 	r := new(big.Int)
-	if r.Mod(i, group.N); r.Sign() == 0 {
+	if r.Mod(i, params.Group.N); r.Sign() == 0 {
 		return false
 	}
 
-	if r.GCD(nil, nil, i, group.N).Cmp(bigOne) != 0 {
+	if r.GCD(nil, nil, i, params.Group.N).Cmp(bigOne) != 0 {
 		return false
 	}
 
