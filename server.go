@@ -190,7 +190,14 @@ func (s *Server) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// RestoreServer restores a server from a previously-saved JSON state.
+// Save encodes the current state of s in a JSON object.
+// Use [RestoreServer] to restore a previously saved state.
+func (s *Server) Save() ([]byte, error) {
+	return s.MarshalJSON()
+}
+
+// RestoreServer restores a server from a previous state obtained
+// with [Server.Save].
 func RestoreServer(params *Params, state []byte) (*Server, error) {
 	s := &Server{
 		params: params,

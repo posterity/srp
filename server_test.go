@@ -12,7 +12,7 @@ func TestRestoreServerJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state, err := server.MarshalJSON()
+	state, err := server.Save()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -50,13 +50,11 @@ SRP comes with four major benefits:
 ### Params selection
 
 SRP requires the client and the server to agree on a given set of parameters,
-namely a diffie-hellman (DH) group, a hash function, and key-derivation
-function.
+namely a Diffie-Hellman (DH) group, a hash function, and a key-derivation
+function:
 
 All the DH groups defined in [RFC 5054](https://tools.ietf.org/html/rfc5054)
-are available.
-
-You can use any hash function you would like
+are available. You can use any hash function you would like
 (e.g. `SHA256`, [Blake2b](https://pkg.go.dev/golang.org/x/crypto/blake2b)), and
 the same goes for key-derivation
 (e.g. [Argon2](https://pkg.go.dev/golang.org/x/crypto/argon2),
@@ -95,7 +93,7 @@ var params = &srp.Params{
 ### User Registration
 
 During user registration, the client must send the server a `verifier`; a
-value cryptographically derived from the user's password, and a unique random
+value safely derived from the user's password, and a unique random
 salt associated with her.
 
 ```go
@@ -143,10 +141,10 @@ On the client side, the first step is to initialize a `Client`.
 
 ```go
 var (
-  params = srp.KnownParams("DH16–SHA256–Argon2")
-  username = "alice@example.com"
-  password = "p@$$w0rd"
-  salt []byte // Retrieved from the server
+  params    = srp.KnownParams("DH16–SHA256–Argon2")
+  username  = "alice@example.com"
+  password  = "p@$$w0rd"
+  salt      []byte // Retrieved from the server
 )
 client, err := srp.NewClient(params, username, password, salt)
 if err != nil {
@@ -222,7 +220,7 @@ before it computes and sends its own (`M2`).
 
 ```go
 var (
-  params = srp.KnownParams("DH16–SHA256–Argon2")  // Same as the client
+  params  = srp.KnownParams("DH16–SHA256–Argon2")  // Same as the client
   triplet srp.Triplet                             // Retrieved from the server
 )
 server, err := srp.NewServer(group, username, password, salt)
@@ -315,10 +313,10 @@ of the user:
 
 ```
 
-If you're using a stateless architecture (e.g. REST), `Server` can be
-encoded/decoded to/from JSON, allowing you to save and restore its internal
-state as needed. Bear in mind that a `Server`'s internal state contains the
-user's `verifier`, and should therefore be handled appropriately.
+If you're using a stateless architecture (e.g. REST), the state of a `Server`
+can be saved and restored using `Server.Save` and `RestoreServer` respectively.
+Bear in mind that a `Server`'s internal state contains the user's `verifier`,
+and should therefore be handled appropriately.
 
 A secure connection between the client and the server is a necessity,
 especially when the client first needs to send their `verifier` to the server.
