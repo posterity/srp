@@ -97,7 +97,6 @@ value safely derived from the user's password, and a unique random
 salt associated with her.
 
 ```go
-params := srp.KnownParams["DH16–SHA256–Argon2"]
 tp, err := srp.ComputeVerifier(params, username, password, srp.NewSalt())
 if err != nil {
   log.Fatalf("error computing verifier: %v", err)
@@ -141,7 +140,6 @@ On the client side, the first step is to initialize a `Client`.
 
 ```go
 var (
-  params    = srp.KnownParams("DH16–SHA256–Argon2")
   username  = "alice@example.com"
   password  = "p@$$w0rd"
   salt      []byte // Retrieved from the server
@@ -220,10 +218,9 @@ before it computes and sends its own (`M2`).
 
 ```go
 var (
-  params  = srp.KnownParams("DH16–SHA256–Argon2")  // Same as the client
   triplet srp.Triplet                             // Retrieved from the server
 )
-server, err := srp.NewServer(group, username, password, salt)
+server, err := srp.NewServer(params, username, password, salt)
 if err != nil {
   log.Fatal(err)
 }
