@@ -2,7 +2,7 @@
 // protocol as defined in [RFC5054] and [RFC2945].
 //
 // It's based on the work of [1Password], with a few key changes to
-// restore compatibility with the original RFCs, and to make the codebase
+// restore compatibility with the original RFCs, and to make the code
 // more idiomatic.
 //
 // [RFC5054]: https://datatracker.ietf.org/doc/html/rfc5054
@@ -54,24 +54,12 @@ func computeM1(params *Params, username, salt []byte, A, B *big.Int, K []byte) (
 	}
 
 	h := params.Hash.New()
-	if _, err := h.Write(groupXOR); err != nil {
-		return nil, fmt.Errorf("failed to write params hash to hasher: %w", err)
-	}
-	if _, err := h.Write(hU); err != nil {
-		return nil, fmt.Errorf("failed to write u hash to hasher: %w", err)
-	}
-	if _, err := h.Write(salt); err != nil {
-		return nil, fmt.Errorf("failed to write salt to hasher: %w", err)
-	}
-	if _, err := h.Write(A.Bytes()); err != nil {
-		return nil, fmt.Errorf("failed to write A to hasher: %w", err)
-	}
-	if _, err := h.Write(B.Bytes()); err != nil {
-		return nil, fmt.Errorf("failed to write B to hasher: %w", err)
-	}
-	if _, err := h.Write(K); err != nil {
-		return nil, fmt.Errorf("failed to write key to hasher: %w", err)
-	}
+	h.Write(groupXOR)
+	h.Write(hU)
+	h.Write(salt)
+	h.Write(A.Bytes())
+	h.Write(B.Bytes())
+	h.Write(K)
 	digest := h.Sum(nil)[:h.Size()]
 
 	return new(big.Int).SetBytes(digest), nil
@@ -83,16 +71,9 @@ func computeM1(params *Params, username, salt []byte, A, B *big.Int, K []byte) (
 // 	M2 = H(A | M | K)
 func computeM2(params *Params, A, M1 *big.Int, K []byte) (*big.Int, error) {
 	h := params.Hash.New()
-	if _, err := h.Write(A.Bytes()); err != nil {
-		return nil, fmt.Errorf("failed to write A to hasher: %w", err)
-	}
-	if _, err := h.Write(M1.Bytes()); err != nil {
-		return nil, fmt.Errorf("failed to write M to hasher: %w", err)
-	}
-	if _, err := h.Write(K); err != nil {
-		return nil, fmt.Errorf("failed to write key to hasher: %w", err)
-	}
-
+	h.Write(A.Bytes())
+	h.Write(M1.Bytes())
+	h.Write(K)
 	digest := h.Sum(nil)[:h.Size()]
 	return new(big.Int).SetBytes(digest), nil
 }
@@ -149,12 +130,8 @@ func computeLittleK(params *Params) (*big.Int, error) {
 	}
 
 	h := params.Hash.New()
-	if _, err := h.Write(params.Group.N.Bytes()); err != nil {
-		return nil, fmt.Errorf("failed to write N to hasher: %w", err)
-	}
-	if _, err = h.Write(g); err != nil {
-		return nil, fmt.Errorf("failed to write g to hasher: %w", err)
-	}
+	h.Write(params.Group.N.Bytes())
+	h.Write(g)
 
 	digest := h.Sum(nil)[:h.Size()]
 	return new(big.Int).SetBytes(digest), nil
@@ -180,12 +157,8 @@ func computeLittleU(params *Params, A, B *big.Int) (*big.Int, error) {
 	}
 
 	h := params.Hash.New()
-	if _, err = h.Write(bA); err != nil {
-		return nil, fmt.Errorf("failed to write to hasher: %w", err)
-	}
-	if _, err := h.Write(bB); err != nil {
-		return nil, fmt.Errorf("failed to write to hasher: %w", err)
-	}
+	h.Write(bA)
+	h.Write(bB)
 
 	digest := h.Sum(nil)[:h.Size()]
 	u := new(big.Int).SetBytes(digest)

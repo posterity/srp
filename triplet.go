@@ -9,22 +9,18 @@ import (
 // Triplet holds the parameters the server
 // should store in a single byte array.
 //
-// Triplet implements the interfaces of
-// Go's sql package, and can therefore be stored
-// as-is in any compatible database.
-//
 // A triplet is structured as following:
-// 	+------------------------+
-// 	| usernameLen (1)        |
-// 	+------------------------+
+//  +------------------------+
+//  | usernameLen (1)        |
+//  +------------------------+
 //  | username (usernameLen) |
-// 	+------------------------+
+//  +------------------------+
 //  | saltLen (1)            |
-// 	+------------------------+
+//  +------------------------+
 //  | salt (saltLen)         |
-// 	+------------------------+
+//  +------------------------+
 //  | verifier               |
-// 	+------------------------+
+//  +------------------------+
 type Triplet []byte
 
 // Username returns the username string in p, or an empty

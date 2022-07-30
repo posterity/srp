@@ -22,7 +22,7 @@ type Client struct {
 	m2       *big.Int // Server proof
 	xS       *big.Int // Pre-master key
 	xK       []byte   // Session key
-	params   *Params  // D-H params
+	params   *Params  // Params combination
 }
 
 // SetB configures the server's public ephemeral key (B).

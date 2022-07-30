@@ -337,6 +337,34 @@ func TestSessionProofOrder(t *testing.T) {
 	}
 }
 
+func TestServerReset(t *testing.T) {
+	s, err := NewServer(params, string(I), salt.Bytes(), v.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.SetA(A.Bytes())
+
+	M1, err := computeM1(params, I, salt.Bytes(), A, s.xB, s.xK)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.CheckM1(M1.Bytes()); !ok {
+		t.Fatalf("M1 not verified: %v", err)
+	}
+
+	if !s.verifiedM1 {
+		t.Fatal("expected M1 to be verified")
+	}
+
+	s.Reset(params, string(I), salt.Bytes(), v.Bytes())
+	if _, err := s.CheckM1(M1.Bytes()); err != ErrServerNoReady {
+		t.Fatal("expected server to not be ready")
+	}
+	if s.verifiedM1 {
+		t.Fatal("expected M1 to not be verified")
+	}
+}
+
 // Send is a noop used for examples.
 func Send(any) {}
 
@@ -508,4 +536,19 @@ func ExampleComputeVerifier() {
 	// the username and the salt used to compute it, so sending the whole
 	// triplet ([]byte) is more appropriate.
 	Send(tp)
+}
+
+// For strict compatibility with the RFC, use SHA-1 for hashing, and
+// the provided [RFC5054KDF] function.
+func ExampleParams() {
+	params := &Params{
+		Group: RFC5054Group1024,
+		Hash:  crypto.SHA1,
+		KDF:   RFC5054KDF,
+	}
+
+	_, err := NewClient(params, "username", "p@$$w0rd", NewSalt())
+	if err != nil {
+		log.Fatal(err)
+	}
 }

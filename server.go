@@ -31,7 +31,7 @@ type Server struct {
 	m2         *big.Int // Server proof
 	xS         *big.Int // Pre-master key
 	xK         []byte   // Session key
-	params     *Params  // DH Group, hash and KDF
+	params     *Params  // Params combination
 	err        error    // Tracks any systemic errors
 	verifiedM1 bool     // Tracks if the client proof was successfully checked
 }
@@ -208,21 +208,29 @@ func RestoreServer(params *Params, state []byte) (*Server, error) {
 	return s, nil
 }
 
-// NewServer returns a new SRP server instance.
-func NewServer(params *Params, username string, salt, verifier []byte) (*Server, error) {
+// Reset resets s to its initial state.
+func (s *Server) Reset(params *Params, username string, salt, verifier []byte) error {
 	k, err := computeLittleK(params)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	v := new(big.Int).SetBytes(verifier)
-	b, B := newServerKeyPair(params, k, v)
+	s.triplet = NewTriplet(username, salt, verifier)
+	s.xA = nil
+	s.b, s.xB = newServerKeyPair(params, k, new(big.Int).SetBytes(verifier))
+	s.m1 = nil
+	s.m2 = nil
+	s.xS = nil
+	s.xK = nil
+	s.params = params
+	s.err = nil
+	s.verifiedM1 = false
 
-	s := &Server{
-		triplet: NewTriplet(username, salt, verifier),
-		b:       b,
-		xB:      B,
-		params:  params,
-	}
-	return s, nil
+	return nil
+}
+
+// NewServer returns a new SRP server instance.
+func NewServer(params *Params, username string, salt, verifier []byte) (*Server, error) {
+	s := &Server{}
+	return s, s.Reset(params, username, salt, verifier)
 }

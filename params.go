@@ -2,9 +2,9 @@ package srp
 
 import (
 	"crypto"
+	"fmt"
 
 	"errors"
-	"io"
 	"math/big"
 	"strings"
 
@@ -74,31 +74,18 @@ func mustParseHex(parts ...string) *big.Int {
 // [PBKDF2]: https://pkg.go.dev/golang.org/x/crypto/pbkdf2
 func RFC5054KDF(username, password string, salt []byte) ([]byte, error) {
 	h := crypto.SHA1.New()
-	if _, err := io.WriteString(h, username); err != nil {
-		return nil, errors.New("failed to write username")
-	}
-	if _, err := io.WriteString(h, ":"); err != nil {
-		return nil, errors.New("failed to write separator")
-	}
-	if _, err := io.WriteString(h, password); err != nil {
-		return nil, errors.New("failed to write password")
-	}
+	h.Write([]byte(fmt.Sprintf("%s:%s", username, password)))
 	digest := h.Sum(nil)[:h.Size()]
 
 	h.Reset()
-	if _, err := h.Write(salt); err != nil {
-		return nil, errors.New("failed to write salt")
-	}
-	if _, err := h.Write(digest); err != nil {
-		return nil, errors.New("failed to write H(I:P)")
-	}
+	h.Write(salt)
+	h.Write(digest)
 	digest = h.Sum(nil)[:h.Size()]
-
 	return digest, nil
 }
 
 // Params represents the DH group, the hash and
-// key-derivation functions that a client and server
+// key derivation functions that a client and server
 // commonly agreed to use.
 //
 // 	import (

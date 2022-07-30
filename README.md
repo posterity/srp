@@ -31,32 +31,30 @@ login, it must prove to that server that it knows it.
 
 With SRP, the client first registers by storing a cryptographic value (`verifier`)
 derived from its password on the server. To login, they both exchange a
-series of values they compute they both share but never exchange to prove to
-each other who they are.
-
-Trust can be established at the end of the process because for the server,
+series of opaque values but never the user's password or the `verifier`. Trust
+can be established at the end of the process because for the server,
 only the client who knows the `verifier` could have sent those values,
 and vice versa.
 
 SRP comes with four major benefits:
 
-1. The familiar user-experience of using a username and a password remains
-   fundamentally the same;
-1. Server cannot leak a password it never saw;
-1. Both client and server can formally verify each other's identities without
-   needing a third-party (e.g CA);
-1. Sessions can be secured with an extra layer of encryption on top of TLS.
+1. For the end-user, the familiar experience of using a username and a password
+   remains fundamentally the same;
+2. Server cannot leak a password it never saw;
+3. After registration, both client and server can formally verify each
+   other's identities without needing a third-party (e.g. CA);
+4. Sessions can be secured with an extra layer of encryption on top of TLS.
 
 ### Params selection
 
 SRP requires the client and the server to agree on a given set of parameters,
-namely a Diffie-Hellman (DH) group, a hash function, and a key-derivation
+namely a Diffie-Hellman (DH) group, a hash function, and a key derivation
 function:
 
 All the DH groups defined in [RFC 5054](https://tools.ietf.org/html/rfc5054)
 are available. You can use any hash function you would like
 (e.g. `SHA256`, [Blake2b](https://pkg.go.dev/golang.org/x/crypto/blake2b)), and
-the same goes for key-derivation
+the same goes for key derivation
 (e.g. [Argon2](https://pkg.go.dev/golang.org/x/crypto/argon2),
 [Scrypt](https://pkg.go.dev/golang.org/x/crypto/scrypt) or
 [PBKDF2](https://pkg.go.dev/golang.org/x/crypto/pbkdf2)).
@@ -187,7 +185,7 @@ If the server accepts the client's proof, they will send their own server proof.
 ```go
 var M2 []byte // Received from the server
 
-ok, err :=client.CheckM2(M2)
+ok, err := client.CheckM2(M2)
 if err != nil {
   log.Fatalf("error checking M2: %v", err)
 }
@@ -213,8 +211,8 @@ if err != nil {
 #### Server-side
 
 The process on the server-side is very similar to the above, with one key
-difference: the server must first receive and verify a proof the client (`M1`)
-before it computes and sends its own (`M2`).
+difference: the server must first receive and verify the client's proof (`M1`)
+before it computes and shares its own (`M2`).
 
 ```go
 var (
@@ -326,7 +324,8 @@ communications during a session.
 
 At Posterity, we use
 [Encrypted-Content-Encoding for HTTP](https://github.com/posterity/ece) to set
-that in motion.
+that in motion, using the shared key to encrypt all client-server exchanges
+with AES-256-GCM after login.
 
 ## Contributions
 
