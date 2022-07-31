@@ -49,7 +49,7 @@ SRP comes with four major benefits:
 
 SRP requires the client and the server to agree on a given set of parameters,
 namely a Diffie-Hellman (DH) group, a hash function, and a key derivation
-function:
+function.
 
 All the DH groups defined in [RFC 5054](https://tools.ietf.org/html/rfc5054)
 are available. You can use any hash function you would like
@@ -59,9 +59,8 @@ the same goes for key derivation
 [Scrypt](https://pkg.go.dev/golang.org/x/crypto/scrypt) or
 [PBKDF2](https://pkg.go.dev/golang.org/x/crypto/pbkdf2)).
 
-The example below shows an example where the Diffie-Hellman group 16 is used
-in conjunction with `SHA256` and
-[Argon2](https://pkg.go.dev/golang.org/x/crypto/argon2) as KDF:
+The example below shows the DH group 16 used in conjunction with `SHA256` and
+[Argon2](https://pkg.go.dev/golang.org/x/crypto/argon2):
 
 ```golang
 import (
@@ -91,8 +90,7 @@ var params = &srp.Params{
 ### User Registration
 
 During user registration, the client must send the server a `verifier`; a
-value safely derived from the user's password, and a unique random
-salt associated with her.
+value safely derived from the user's password with a unique random salt.
 
 ```go
 tp, err := srp.ComputeVerifier(params, username, password, srp.NewSalt())
@@ -100,8 +98,7 @@ if err != nil {
   log.Fatalf("error computing verifier: %v", err)
 }
 
-// The verifier can be accessed via the returned triplet tp
-// as tp.Verifier().
+// The verifier can be accessed as tp.Verifier().
 
 // On the server, it's recommended to store the verifier along with
 // the username and the salt used to compute it, so sending the whole
@@ -110,7 +107,7 @@ Send(tp)
 ```
 
 The `Triplet` returned by `ComputeVerifier` encapsulates three variables into a
-single byte array that the server can store in a database:
+single byte array that the server can store:
 
 - Username
 - Verifier

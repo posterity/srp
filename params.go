@@ -85,29 +85,29 @@ func RFC5054KDF(username, password string, salt []byte) ([]byte, error) {
 }
 
 // Params represents the DH group, the hash and
-// key derivation functions that a client and server
-// commonly agreed to use.
+// key derivation function that a client and server
+// jointly agreed to use.
 //
-// 	import (
-//  	"runtime"
-//   	"github.com/posterity/srp"
-//   	"golang.org/x/crypto/argon2"
+//   import (
+//     "runtime"
+//     "github.com/posterity/srp"
+//   	 "golang.org/x/crypto/argon2"
 //
-//   	_ "crypto/sha256"
-// 	)
+//   	 _ "crypto/sha256"
+// 	 )
 //
-// 	func KDFArgon2(username, password string, salt []byte) ([]byte, error) {
-//   	p := []byte(username + ":" + password)
-//   	key := argon2.IDKey(p, salt, 3, 256 * 1048576, runtime.NumCPU(), 32)
-//   	return key, nil
-// 	}
+// 	 func KDFArgon2(username, password string, salt []byte) ([]byte, error) {
+//   	 p := []byte(username + ":" + password)
+//   	 key := argon2.IDKey(p, salt, 3, 256 * 1048576, runtime.NumCPU(), 32)
+//   	 return key, nil
+// 	 }
 //
-// 	var params = &srp.Params{
-//   	Name: "DH16–SHA256–Argon2",
-//   	Group: srp.RFC5054Group4096,
-//   	Hash: crypto.SHA256,
-//   	KDF: KDFArgon2,
-// 	}
+// 	 var params = &srp.Params{
+//   	 Name: "DH16–SHA256–Argon2",
+//   	 Group: srp.RFC5054Group4096,
+//   	 Hash: crypto.SHA256,
+//   	 KDF: KDFArgon2,
+// 	 }
 type Params struct {
 	Name  string
 	Group *Group
@@ -135,29 +135,30 @@ type Group struct {
 	ExponentSize int
 }
 
-// Diffie-Hellman groups defined in [RFC5054].
+// Diffie-Hellman group 2.
 //
-// Deprecated: These groups are not recommended
+// Deprecated: This group is not recommended
 // for production-use.
+var RFC5054Group1024 = &Group{
+	ID:           "2",
+	Generator:    big.NewInt(2),
+	N:            mustParseHex(hex1024),
+	ExponentSize: 32,
+}
+
+// Diffie-Hellman group 5.
 //
-// [RFC5054]: https://datatracker.ietf.org/doc/html/rfc5054
-var (
-	RFC5054Group1024 = &Group{
-		ID:           "2",
-		Generator:    big.NewInt(2),
-		N:            mustParseHex(hex1024),
-		ExponentSize: 32,
-	}
+// Deprecated: This group is not recommended
+// for production-use.
+var RFC5054Group1536 = &Group{
+	ID:           "5",
+	Generator:    big.NewInt(2),
+	N:            mustParseHex(hex1536),
+	ExponentSize: 23,
+}
 
-	RFC5054Group1536 = &Group{
-		ID:           "5",
-		Generator:    big.NewInt(2),
-		N:            mustParseHex(hex1536),
-		ExponentSize: 23,
-	}
-)
-
-// Diffie-Hellman groups defined in [RFC5054].
+// Diffie-Hellman group 14, 15, 16, 17 and 18
+// defined in [RFC5054].
 //
 // [RFC5054]: https://datatracker.ietf.org/doc/html/rfc5054
 var (

@@ -2,6 +2,7 @@ package srp
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"math"
 )
@@ -44,6 +45,22 @@ func (t Triplet) Verifier() []byte {
 	usernameLen := int(t[0])
 	saltLen := int(t[usernameLen+1])
 	return t[usernameLen+saltLen+2:]
+}
+
+// MarshalJSON returns a JSON representation
+// of t that includes the username and the salt,
+// but not the verifier.
+//
+//  {
+//     "username": "alice",
+//     "salt": "EzDH8afmICl6Xxsv",
+//  }
+func (t Triplet) MarshalJSON() ([]byte, error) {
+	m := map[string]any{
+		"username": t.Username(),
+		"salt":     t.Salt(),
+	}
+	return json.Marshal(m)
 }
 
 // NewTriplet returns a new Triplet instance from the given

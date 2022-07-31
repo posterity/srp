@@ -337,34 +337,6 @@ func TestSessionProofOrder(t *testing.T) {
 	}
 }
 
-func TestServerReset(t *testing.T) {
-	s, err := NewServer(params, string(I), salt.Bytes(), v.Bytes())
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.SetA(A.Bytes())
-
-	M1, err := computeM1(params, I, salt.Bytes(), A, s.xB, s.xK)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ok, err := s.CheckM1(M1.Bytes()); !ok {
-		t.Fatalf("M1 not verified: %v", err)
-	}
-
-	if !s.verifiedM1 {
-		t.Fatal("expected M1 to be verified")
-	}
-
-	s.Reset(params, string(I), salt.Bytes(), v.Bytes())
-	if _, err := s.CheckM1(M1.Bytes()); err != ErrServerNoReady {
-		t.Fatal("expected server to not be ready")
-	}
-	if s.verifiedM1 {
-		t.Fatal("expected M1 to not be verified")
-	}
-}
-
 // Send is a noop used for examples.
 func Send(any) {}
 
@@ -434,7 +406,7 @@ func ExampleClient() {
 	// and legitimate.
 
 	// They also share a common key they both derived independently
-	// from the process,
+	// from the process
 	K, err := client.SessionKey()
 	if err != nil {
 		log.Fatalf("failed to access shared session key: %v", err)
@@ -447,18 +419,9 @@ func ExampleClient() {
 
 // Example of a server session.
 func ExampleServer() {
-	// Typically, the client will start by requesting
-	// a user's salt.
-	var username = Receive()
-
 	// Load the user's Triplet from the persistent
-	// storage where it was kept (e.g. database).
-	var user Triplet = Query(username)
-
-	// Send the user the salt they previously used,
-	// whenever requested. Triplet can marshaled to JSON
-	// without revealing the secret verifier value.
-	Send(user.Salt())
+	// storage.
+	var user Triplet = Query("alice@example.com")
 
 	// Create a server, specifying the same params used on the client.
 	server, err := NewServer(params, user.Username(), user.Salt(), user.Verifier())
@@ -538,8 +501,10 @@ func ExampleComputeVerifier() {
 	Send(tp)
 }
 
-// For strict compatibility with the RFC, use SHA-1 for hashing, and
-// the provided [RFC5054KDF] function.
+// This example shows how to create a Params instance that ensures strict
+// compatibility with [RFC5054] (Not recommended in production).
+//
+// [RFC5054]: https://datatracker.ietf.org/doc/html/rfc5054
 func ExampleParams() {
 	params := &Params{
 		Group: RFC5054Group1024,
