@@ -108,7 +108,7 @@ func (c *Client) SessionKey() ([]byte, error) {
 
 // NewClient a new SRP client instance.
 func NewClient(params *Params, username, password string, salt []byte) (*Client, error) {
-	x, err := params.KDF(username, password, salt)
+	x, err := params.KDF(NFKD(username), NFKD(password), salt)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +134,7 @@ func NewClient(params *Params, username, password string, salt []byte) (*Client,
 // over a secure connection (TLS), and stored in a secure
 // persistent-storage (e.g. database).
 func ComputeVerifier(params *Params, username, password string, salt []byte) (Triplet, error) {
-	x, err := params.KDF(username, password, salt)
+	x, err := params.KDF(NFKD(username), NFKD(password), salt)
 	if err != nil {
 		return nil, err
 	}

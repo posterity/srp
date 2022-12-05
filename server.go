@@ -215,7 +215,7 @@ func (s *Server) Reset(params *Params, username string, salt, verifier []byte) e
 		return err
 	}
 
-	s.triplet = NewTriplet(username, salt, verifier)
+	s.triplet = NewTriplet(NFKD(username), salt, verifier)
 	s.xA = nil
 	s.b, s.xB = newServerKeyPair(params, k, new(big.Int).SetBytes(verifier))
 	s.m1 = nil
