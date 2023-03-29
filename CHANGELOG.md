@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.1.2
+## v2.0.1
 
 - Requires Go 1.20;
 - Now using Go's new subtle.XORBytes function;

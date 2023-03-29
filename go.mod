@@ -1,4 +1,4 @@
-module code.posterity.life/srp
+module code.posterity.life/srp/v2
 
 go 1.20
 
