@@ -1,4 +1,8 @@
-[![GoDoc reference](https://img.shields.io/badge/godoc-reference-blue.svg)](https://pkg.go.dev/code.posterity.life/srp)
+[![GoDoc reference](https://img.shields.io/badge/godoc-reference-blue.svg)](https://pkg.go.dev/code.posterity.life/srp/v2)
+
+```golang
+go get code.posterity.life/srp/v2@latest
+```
 
 # Secure Remote Password
 
