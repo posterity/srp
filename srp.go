@@ -1,14 +1,9 @@
 // Package srp is an implementation of the Secure Remote Password
 // protocol as defined in [RFC5054] and [RFC2945].
 //
-// It's based on the work of [1Password], with a few key changes to
-// restore compatibility with the original RFCs, and to make the code
-// more idiomatic.
-//
 // [RFC5054]: https://datatracker.ietf.org/doc/html/rfc5054
 // [RFC2945]: https://datatracker.ietf.org/doc/html/rfc2945
-// [1Password]: https://github.com/1Password/srp
-package srp
+package srp // code.posterity.life/srp
 
 import (
 	"crypto/rand"
@@ -40,7 +35,8 @@ func NewSalt() []byte {
 // computeM1 computes the value of the client proof M1.
 //
 // Formula:
-// 	M1 = H(H(N) XOR H(g) | H(U) | s | A | B | K)
+//
+//	M1 = H(H(N) XOR H(g) | H(U) | s | A | B | K)
 func computeM1(params *Params, username, salt []byte, A, B *big.Int, K []byte) (*big.Int, error) {
 	var (
 		hN = params.hashBytes(params.Group.N.Bytes())
@@ -48,13 +44,12 @@ func computeM1(params *Params, username, salt []byte, A, B *big.Int, K []byte) (
 		hU = params.hashBytes(username)
 	)
 
-	groupXOR, err := xorBytes(hN, hg)
-	if err != nil {
-		return nil, err
-	}
-
 	h := params.Hash.New()
-	h.Write(groupXOR)
+	{
+		groupXOR := make([]byte, len(hN))
+		n := subtle.XORBytes(groupXOR, hN, hg)
+		h.Write(groupXOR[:n])
+	}
 	h.Write(hU)
 	h.Write(salt)
 	h.Write(A.Bytes())
@@ -68,7 +63,8 @@ func computeM1(params *Params, username, salt []byte, A, B *big.Int, K []byte) (
 // computeM2 computes the value of the server proof M2.
 //
 // Formula:
-// 	M2 = H(A | M | K)
+//
+//	M2 = H(A | M | K)
 func computeM2(params *Params, A, M1 *big.Int, K []byte) (*big.Int, error) {
 	h := params.Hash.New()
 	h.Write(A.Bytes())
@@ -89,7 +85,8 @@ func checkProof(Mx, proof []byte) bool {
 // derived by a server from this session.
 //
 // Formula:
-// 	S = (A * v^u) ^ b % N
+//
+//	S = (A * v^u) ^ b % N
 func computeServerS(params *Params, v, u, A, b *big.Int) (*big.Int, error) {
 	base := new(big.Int)
 	base.Exp(v, u, params.Group.N)
@@ -103,7 +100,8 @@ func computeServerS(params *Params, v, u, A, b *big.Int) (*big.Int, error) {
 // derived by a client from a session.
 //
 // Formula:
-// 	S = (B - (k * g ^ x)) ^ (a + (u * x)) % N
+//
+//	S = (B - (k * g ^ x)) ^ (a + (u * x)) % N
 func computeClientS(params *Params, k, x, u, B, a *big.Int) (*big.Int, error) {
 	// (k * g ^ x)
 	product := new(big.Int).Mul(k, new(big.Int).Exp(params.Group.Generator, x, params.Group.N))
@@ -122,7 +120,8 @@ func computeClientS(params *Params, k, x, u, B, a *big.Int) (*big.Int, error) {
 // computeLittleK computes the value of k.
 //
 // Formula:
-// 	k = H(N | PAD(g))
+//
+//	k = H(N | PAD(g))
 func computeLittleK(params *Params) (*big.Int, error) {
 	g, err := pad(params.Group.Generator.Bytes(), params.Group.N.BitLen())
 	if err != nil {
@@ -140,7 +139,8 @@ func computeLittleK(params *Params) (*big.Int, error) {
 // computeLittleU computes the value of u.
 //
 // Formula:
-// 	u = SHA1(PAD(A) | PAD(B))
+//
+//	u = SHA1(PAD(A) | PAD(B))
 func computeLittleU(params *Params, A, B *big.Int) (*big.Int, error) {
 	if A == nil {
 		return nil, errors.New("client public ephemeral A must be set first")
@@ -169,8 +169,9 @@ func computeLittleU(params *Params, A, B *big.Int) (*big.Int, error) {
 // (b, B).
 //
 // Formula:
-// 	b = random()
-// 	B = k*v + g^b % N
+//
+//	b = random()
+//	B = k*v + g^b % N
 func newServerKeyPair(params *Params, k, v *big.Int) (b *big.Int, B *big.Int) {
 	size := params.Group.ExponentSize
 	if params.Group.ExponentSize < minEphemeralKeySize {
@@ -198,8 +199,9 @@ func newServerKeyPair(params *Params, k, v *big.Int) (b *big.Int, B *big.Int) {
 // (a, A).
 //
 // Formula:
-// 	a = random()
-// 	A = g^a % N
+//
+//	a = random()
+//	A = g^a % N
 func newClientKeyPair(params *Params) (a *big.Int, A *big.Int) {
 	size := params.Group.ExponentSize
 	if params.Group.ExponentSize < minEphemeralKeySize {
@@ -252,17 +254,4 @@ func pad(b []byte, bits int) ([]byte, error) {
 		return nil, errors.New("resulting array is not the right size")
 	}
 	return padded, nil
-}
-
-// xorBytes returns an array containing
-// the result of a[i] XOR b[i].
-func xorBytes(a, b []byte) ([]byte, error) {
-	if len(a) != len(b) {
-		return nil, errors.New("slices must be of equal length")
-	}
-	output := make([]byte, len(a))
-	for i := 0; i < len(a); i++ {
-		output[i] = a[i] ^ b[i]
-	}
-	return output, nil
 }

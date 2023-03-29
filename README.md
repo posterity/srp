@@ -1,4 +1,4 @@
-[![GoDoc reference](https://img.shields.io/badge/godoc-reference-blue.svg)](https://pkg.go.dev/github.com/posterity/srp)
+[![GoDoc reference](https://img.shields.io/badge/godoc-reference-blue.svg)](https://pkg.go.dev/code.posterity.life/srp)
 
 # Secure Remote Password
 
@@ -12,10 +12,6 @@ protocol as defined by [RFC 2945](https://tools.ietf.org/html/rfc2945) and
 > revealing the password to an eavesdropper. SRP also supplies a
 > shared secret at the end of the authentication sequence that can be
 > used to generate encryption keys.
-
-It's based on the work of [1Password](https://github.com/1Password/srp),
-with a few key changes to restore compatibility with the RFC, and to make
-the codebase more idiomatic.
 
 SRP is used by leading privacy-conscious companies such as
 [Apple](https://support.apple.com/guide/security/escrow-security-for-icloud-keychain-sec3e341e75d/web),

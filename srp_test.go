@@ -112,6 +112,13 @@ func TestComputeLittleU(t *testing.T) {
 	assertEqualBytes(t, "u", u.Bytes(), got.Bytes())
 }
 
+func TestComputeLittleUInvalidA(t *testing.T) {
+	_, err := computeLittleU(params, nil, B)
+	if err == nil {
+		t.Fatal("expected err")
+	}
+}
+
 func TestComputeLittleK(t *testing.T) {
 	got, err := computeLittleK(params)
 	if err != nil {
@@ -334,6 +341,13 @@ func TestSessionProofOrder(t *testing.T) {
 
 	if _, err := server.ComputeM2(); err == nil {
 		t.Fatal("expected an error here, because server.CheckM1 has not been called yet")
+	}
+}
+
+func TestNewSalt(t *testing.T) {
+	b := NewSalt()
+	if len(b) != SaltLength {
+		t.Fatal("invalid length")
 	}
 }
 
