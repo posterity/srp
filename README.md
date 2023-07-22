@@ -215,7 +215,7 @@ before it computes and shares its own (`M2`).
 var (
   triplet srp.Triplet                             // Retrieved from the server
 )
-server, err := srp.NewServer(params, username, password, salt)
+server, err := srp.NewServer(params, username, salt)
 if err != nil {
   log.Fatal(err)
 }
